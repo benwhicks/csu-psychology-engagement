@@ -3,3 +3,6 @@
 .Rproj.user/
 temp/
 *.png
+vignettes/*.pdf
+vignettes/*.png
+vignettes/*.html
