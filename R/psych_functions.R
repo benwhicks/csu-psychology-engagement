@@ -9,6 +9,12 @@ extractResourceTypeFromData <- function(dataString) {
   return(s)
 }
 
+tidyDataField <- function(dataString) {
+  s <- str_remove(dataString, '^.*title\\":\\"')
+  s <- str_remove(s, '\\".*$')
+  return(s)
+}
+
 na.falsify <- function(x) {
   return(if_else(is.na(x), FALSE, x))
 }

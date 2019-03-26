@@ -81,37 +81,21 @@ edges <- edges %>%
   unique()
 
 # New version of PSY data - testing
-socpsyAct18 <- read_csv(paste0(datdir, "aa Social Psychology 201860.csv")) %>% filter(!is.na(id))
+socpsyAct18 <- read_csv(file.path(datdir, "aa stats Social Psychology.csv")) %>% filter(!is.na(id))
 socpsyAct18$id <- factor(socpsyAct18$id)
-socpsyAct18$cc_pk1 <- factor(socpsyAct18$cc_pk1)
+socpsyAct18 <- socpsyAct18 %>% mutate(forum_bool = str_detect(tolower(data), "discus|thread|forum"),
+                                      content = tidyDataField(data),
+                                      name = paste0(lastname, ', ', firstname))
+socpsyAct18 <- socpsyAct18 %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
 
-biopsyAct18 <- read_csv(paste0(datdir, "aa Biopsychology 201860.csv")) %>% filter(!is.na(id))
+
+biopsyAct18 <- read_csv(file.path(datdir, "aa stats Biopsychology.csv")) %>% filter(!is.na(id))
 biopsyAct18$id <- factor(biopsyAct18$id)
-biopsyAct18$cc_pk1 <- factor(biopsyAct18$cc_pk1)
+biopsyAct18 <- biopsyAct18 %>% mutate(forum_bool = str_detect(tolower(data), "discus|thread|forum"),
+                                      content = tidyDataField(data),
+                                      name = paste0(lastname, ', ', firstname))
+biopsyAct18 <- biopsyAct18 %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
 
-courseContents <- read_csv(paste0(datdir, "psy course contents.csv"))#,
-courseContents$cc_pk1 <- factor(courseContents$cc_pk1)
-courseContents$cc_handle <- NULL # this ended up with no data
-courseContents$description <- NULL # this ended up with no data
-courseContents$group_content_boolean <- NULL # this ended up with no data
-courseContents <- courseContents %>% mutate(forum_bool = str_detect(tolower(content_data), "discus|thread|forum") | 
-                                              str_detect(tolower(title), "discus|thread|forum"))
-courseContents <- courseContents %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
-
-
-# ERROR HERE - - - not merging title...possiblly nont me
-socpsyAct18 <- merge(socpsyAct18, courseContents %>% select(cc_pk1, subject, title, type, content_data, forum_bool), all.x = T)
-biopsyAct18 <- merge(biopsyAct18, courseContents %>% select(cc_pk1, subject, title, type, content_data, forum_bool), all.x = T)
-
-#socpsyAct17 <- read_csv(paste0(datdir, "PSY203 Activity 201760.csv"),
-#                        col_names = c("Subject", "Name", "ID", "Event", "Handle", "Timestamp", "Data"))
-#socpsyAct17 <- socpsyAct17 %>% mutate(type = extractResourceTypeFromData(Data), 
-#                                      SUB = substr(Subject, 3, 8))
-#biopsyact18 <- read_csv(paste0(datdir, "PSY208 Activity.csv"),
-#                        col_names = c("Subject", "Name", "ID", "Event", "Handle", "Timestamp", "Data"))
-#biospyact17 <- psy208act17 %>% mutate(type = extractResourceTypeFromData(Data), 
-#                                     SUB = substr(Subject, 3, 8))
-#names(biopsyact18) <- str_to_lower(names(biopsyact18))
 
 discussionViewsBio <- biopsyAct18 %>% 
   select(name, id, subject, forum_bool, data) %>%
@@ -146,13 +130,14 @@ discussionViewsSoc <- socpsyAct18 %>%
 
 # Looking at what was clicked prior to forum access
 
-bioForumExamine <- biopsyAct18 %>% filter(role == "S") %>% select(id, timestamp, title, forum_bool) %>% arrange(id, timestamp)
+bioForumExamine <- biopsyAct18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>% arrange(id, timestamp)
 r = length(bioForumExamine$id)
-bioForumAccess <- tibble(from = bioForumExamine[1:r - 1, "title"],
-                             to = bioForumExamine[2:r, "title"],
+bioForumAccess <- data.frame(from = bioForumExamine[1:r - 1, "content"],
+                             to = bioForumExamine[2:r, "content"],
                              idFrom = bioForumExamine[1:r - 1, "id"],
                              idTo = bioForumExamine[2:r, "id"],
                              toForum = bioForumExamine[2:r, "forum_bool"])
+names(bioForumAccess) <- c("from", "to", "idFrom", "idTo", "toForum") #shouldn't need to do this
 #bioForumAccess$from <- as.character(bioForumAccess$from)
 #bioForumAccess$to <- as.character(bioForumAccess$to)
 bioForumAccess <- bioForumAccess %>% filter(idFrom == idTo) %>% mutate(toForum = na.falsify(toForum))# was filtering for forum true as well.
@@ -162,10 +147,10 @@ bioForumAccessEdges <- bioForumAccess %>%
   summarise(weight = n()) 
 
 bioForumAccessNodes <- bioForumExamine %>% 
-  select(title, forum_bool, timestamp) %>%
-  group_by(title, forum_bool) %>%
-  summarise(first_access = mean(timestamp), hits = n()) %>%
-  mutate(PageType = if_else(str_detect(title, "lab|Lab"), "Lab", 
+  select(content, forum_bool, timestamp) %>%
+  group_by(content, forum_bool) %>%
+  summarise(first_access = min(timestamp), hits = n()) %>%
+  mutate(PageType = if_else(str_detect(content, "lab|Lab"), "Lab", 
                             if_else(forum_bool, "Forum", "Other"))) %>%
   mutate(PageType = if_else(is.na(PageType), "Other", PageType)) %>%
   arrange(first_access)
@@ -175,40 +160,42 @@ bioForumAccessGraph <- tbl_graph(nodes = bioForumAccessNodes,
                                  directed = TRUE)
 
 bioNavPlot <- bioForumAccessGraph %>% activate(nodes) %>% filter(!node_is_isolated()) %>% 
-  ggraph(layout = "linear", circular = T) + 
+  ggraph(layout = "linear", circular = F) + 
   geom_node_point(aes(color = PageType, size = hits)) +
-  geom_edge_arc2(aes(edge_width = weight, color = toForum), alpha = 0.5, lineend = "round", show.legend = F) +
+  geom_edge_arc2(aes(edge_width = weight, color = toForum), alpha = 0.1, lineend = "round", show.legend = F) +
   scale_color_brewer(palette = "Dark2") +
   scale_size(guide = "none") +
   scale_edge_alpha(guide = "none") +
-  geom_node_text(aes(label = title, alpha = hits), size = 3,repel = T) +
+  geom_node_text(aes(label = content, alpha = hits), size = 3,repel = T) +
   scale_alpha(guide = "none") +
   theme_graph()  
 
 bioNavPlot + ggtitle("Biopsychology site navigation")
 
 bioFAplot <- bioForumAccessGraph %>% activate(nodes) %>% filter(!node_is_isolated()) %>% activate(edges) %>% filter(toForum) %>% 
-  ggraph(layout = "linear", circular = T) + 
+  ggraph(layout = "linear", circular = F) + 
   geom_node_point(aes(color = PageType, size = hits)) +
   geom_edge_arc2(aes(color = toForum, edge_width = weight), alpha = 0.5, lineend = "round", show.legend = F) +
   scale_color_brewer(palette = "Dark2") +
   scale_size(guide = "none") +
   scale_edge_alpha(guide = "none") +
-  geom_node_text(aes(label = title), size = 3,repel = T) +
+#  geom_node_text(aes(label = content), size = 3,repel = T) +
   scale_alpha(guide = "none") +
   theme_graph()  
 
 bioFAplot + ggtitle("Biopsychology navigation to Forums")
 
 
-socForumExamine <- socpsyAct18 %>% filter(role == "S") %>% select(id, timestamp, title, forum_bool) %>% arrange(id, timestamp)
+
+
+socForumExamine <- socpsyAct18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>% arrange(id, timestamp)
 r = length(socForumExamine$id)
-socForumAccess <- data.frame(from = socForumExamine[1:r - 1, "title"],
-                             to = socForumExamine[2:r, "title"],
+socForumAccess <- data.frame(from = socForumExamine[1:r - 1, "content"],
+                             to = socForumExamine[2:r, "content"],
                              idFrom = socForumExamine[1:r - 1, "id"],
                              idTo = socForumExamine[2:r, "id"],
                              toForum = socForumExamine[2:r, "forum_bool"])
-
+names(socForumAccess) <- c("from", "to", "idFrom", "idTo", "toForum")
 socForumAccess <- socForumAccess %>% filter(from != to, idFrom == idTo) # was filtering for forum true as well.
 
 socForumAccessEdges <- socForumAccess %>% 
@@ -216,10 +203,10 @@ socForumAccessEdges <- socForumAccess %>%
   summarise(weight = n())
 
 socForumAccessNodes <- socForumExamine %>% 
-  select(title, forum_bool, timestamp) %>%
-  group_by(title, forum_bool) %>%
+  select(content, forum_bool, timestamp) %>%
+  group_by(content, forum_bool) %>%
   summarise(first_access = mean(timestamp), hits = n()) %>%
-  mutate(PageType = if_else(str_detect(title, "tutorial|Tutorial"), "Tutorial", 
+  mutate(PageType = if_else(str_detect(content, "tutorial|Tutorial"), "Tutorial", 
                             if_else(forum_bool, "Forum", "Other"))) %>%
   mutate(PageType = if_else(is.na(PageType), "Other", PageType)) %>%
   arrange(first_access)
@@ -263,8 +250,8 @@ nodesSoc <- nodes %>% filter(str_detect(Subject, "Social"))
 edgesSoc <- edges %>% filter(str_detect(Subject, "Social"))
 
 # Filtering strange IDs
-nodesBio <- nodesBio %>% filter(ID %in% discussionViewsBio$ID | !(Name %in% discussionViewsBio$Name))
-nodesSoc <- nodesSoc %>% filter(ID %in% discussionViewsSoc$ID | !(Name %in% discussionViewsSoc$Name))
+#nodesBio <- nodesBio %>% filter(ID %in% discussionViewsBio$ID | !(Name %in% discussionViewsBio$Name))
+#nodesSoc <- nodesSoc %>% filter(ID %in% discussionViewsSoc$ID | !(Name %in% discussionViewsSoc$Name))
 
 # getting grade quartiles
 nodesBio <- nodesBio %>% mutate(grade_quartile = ntile(Grade, 4)) 

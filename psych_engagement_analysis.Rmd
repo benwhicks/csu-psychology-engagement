@@ -1,14 +1,14 @@
 ---
-title: "Analysis of Engagement in PSY203 and PSY208 Courses"
+title: "Analysis of Engagement in Social Psychology and Biopsychology Courses"
 author: "Ben Hicks"
-output: pdf_document
+output: html_document
 ---
 
 The following data is from the Social Psychology (PSY203 and PSY453) and Biopsychology (PSY208 and PSY408) subjects run in 2018 Session 2. The aim of this report is to look at student engagement in these courses through the data available in Blackboard Learn. 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = F, message = F, warning = F)
-knitr::opts_chunk$set(dev = 'png')
+#knitr::opts_chunk$set(dev = 'png') - - uncomment to reduce file size
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(GGally))
 suppressPackageStartupMessages(library(network))
@@ -18,22 +18,22 @@ suppressPackageStartupMessages(library(ggthemes))
 ```
 
 ``` {r importing}
-datdir <- "D:/Users/bhicks/Documents/Data/Psych/"
-source('R/psych_functions.R')
+datdir <- file.path("~", "Data", "Psych")
+source(file.path('R','psych_functions.R'))
 
-timelineDataRaw <- read_csv(paste0(datdir, "PSY Pyramid Weekly Activity.csv"))
-snData <- read_csv(paste0(datdir, "PSY Posts and Replies.csv"),
+timelineDataRaw <- read_csv(file.path(datdir, "PSY Pyramid Weekly Activity.csv"))
+snData <- read_csv(file.path(datdir, "PSY Posts and Replies.csv"),
                    col_types = "cccffn")
-roleData <- read_csv(paste0(datdir, "PSY User Roles.csv"),
+roleData <- read_csv(file.path(datdir, "PSY User Roles.csv"),
                      col_types = "ccfc")
 roleData <- roleData %>% 
   filter(str_detect(Subject, "203|208")) %>% unique() # honours students are doubled up
 
-marksData <- read_csv(paste0(datdir, "PSY Marks.csv"))
+marksData <- read_csv(file.path(datdir, "PSY Marks.csv"))
 marksData$Score <- as.numeric(marksData$Score) # some of the mark data was NULL (missing) and this forces it into NA's, and the remainder into numeric form
-accessData <- read_csv(paste0(datdir, "PSY Pyramid Course Accesses.csv"),
+accessData <- read_csv(file.path(datdir, "PSY Pyramid Course Accesses.csv"),
                        col_types = "cfcnn")
-interactionsData <- read_csv(paste0(datdir, "PSY Pyramid Course Interactions.csv"),
+interactionsData <- read_csv(file.path(datdir, "PSY Pyramid Course Interactions.csv"),
                              col_types = "cfcnn")
 pyramidData <- merge(interactionsData, accessData, all = T)
 pyramidData <- pyramidData %>% plyr::rename(replace = c("CourseID" = "Subject", "ID" = "SISID"))
@@ -62,7 +62,7 @@ questions <- edgesAll %>%
 edges <- edgesAll %>% filter(to != "NULL")
 
 nodes <- data.frame(ID = as.factor(nodeData$ID), 
-                Name = nodeData$Name, 
+                Name = as.character(nodeData$Name), 
                 Role = nodeData$Role,
                 Accesses = nodeData$Accesses,
                 Interactions = nodeData$Interactions,
@@ -82,42 +82,44 @@ edges <- edges %>%
   unique()
 
 
-socpsyAct18 <- read_csv(paste0(datdir, "aa Social Psychology 201860.csv"), col_types = "fTcccccccf")
-biopsyAct18 <- read_csv(paste0(datdir, "aa Biopsychology 201860.csv"), col_types = "fTcccccccf")
-courseContents <- read_csv(paste0(datdir, "psy course contents.csv"),
-                           col_types = "ccfccccccc")
-courseContents$cc_handle <- NULL # this ended up with no data
-courseContents$description <- NULL # this ended up with no data
-courseContents$group_content_boolean <- NULL # this ended up with no data
-courseContents <- courseContents %>% mutate(forum_bool = str_detect(tolower(content_data), "discus|thread|forum") | 
-                                              str_detect(tolower(title), "discus|thread|forum"))
-courseContents <- courseContents %>% mutate(forum_bool = if_else(is.na(forum_bool), NA, forum_bool))
+# New version of PSY data - testing
+socpsyAct18 <- read_csv(file.path(datdir, "aa stats Social Psychology.csv")) %>% filter(!is.na(id))
+socpsyAct18$id <- factor(socpsyAct18$id)
+socpsyAct18 <- socpsyAct18 %>% mutate(forum_bool = str_detect(tolower(data), "discus|thread|forum"),
+                                      content = tidyDataField(data),
+                                      name = paste0(lastname, ', ', firstname))
+socpsyAct18 <- socpsyAct18 %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
 
-socpsyAct18 <- merge(socpsyAct18, courseContents %>% select(cc_pk1, title, type, content_data, forum_bool), all.x = T)
-biopsyAct18 <- merge(biopsyAct18, courseContents %>% select(cc_pk1, title, type, content_data, forum_bool), all.x = T)
+
+biopsyAct18 <- read_csv(file.path(datdir, "aa stats Biopsychology.csv")) %>% filter(!is.na(id))
+biopsyAct18$id <- factor(biopsyAct18$id)
+biopsyAct18 <- biopsyAct18 %>% mutate(forum_bool = str_detect(tolower(data), "discus|thread|forum"),
+                                      content = tidyDataField(data),
+                                      name = paste0(lastname, ', ', firstname))
+biopsyAct18 <- biopsyAct18 %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
 
 discussionViewsBio <- biopsyAct18 %>% 
-  select(name, id, subject, forum_bool, data) %>%
+  select(name, subject, forum_bool, data) %>%
   filter(  forum_bool |
            str_detect(tolower(data), "discus|thread|forum")
          ) %>% 
-  group_by(subject, name, id) %>%
+  group_by(subject, name) %>%
   summarise(ForumViews = n()) %>%
-  group_by(name, id) %>%
+  group_by(name) %>%
   summarise(ForumViews = sum(ForumViews)) %>%
-  plyr::rename(replace = c("id" = "ID", "name" = "Name"))
+  plyr::rename(replace = c("name" = "Name"))
 
 
 discussionViewsSoc <- socpsyAct18 %>% 
-  select(name, id, subject, forum_bool, data) %>%
+  select(name, subject, forum_bool, data) %>%
   filter(  forum_bool |
              str_detect(tolower(data), "discus|thread|forum")
   ) %>% 
-  group_by(subject, name, id) %>%
+  group_by(subject, name) %>%
   summarise(ForumViews = n()) %>%
-  group_by(name, id) %>%
+  group_by(name) %>%
   summarise(ForumViews = sum(ForumViews)) %>%
-  plyr::rename(replace = c("id" = "ID", "name" = "Name"))
+  plyr::rename(replace = c("name" = "Name"))
 
 # Graphing in tidygraph and ggraph
 
@@ -127,15 +129,15 @@ nodesSoc <- nodes %>% filter(str_detect(Subject, "Social"))
 edgesSoc <- edges %>% filter(str_detect(Subject, "Social"))
 
 # Filtering strange IDs
-nodesBio <- nodesBio %>% filter(ID %in% discussionViewsBio$ID | !(Name %in% discussionViewsBio$Name))
-nodesSoc <- nodesSoc %>% filter(ID %in% discussionViewsSoc$ID | !(Name %in% discussionViewsSoc$Name))
+#nodesBio <- nodesBio %>% filter(ID %in% discussionViewsBio$ID | !(Name %in% discussionViewsBio$Name))
+#nodesSoc <- nodesSoc %>% filter(ID %in% discussionViewsSoc$ID | !(Name %in% discussionViewsSoc$Name))
 
 # getting grade quartiles
 nodesBio <- nodesBio %>% mutate(grade_quartile = ntile(Grade, 4)) 
-nodesBio[is.na(nodesBio$grade_quartile),]$grade_quartile <- 0
+#nodesBio[is.na(nodesBio$grade_quartile),]$grade_quartile <- 0
 
 nodesSoc <- nodesSoc %>% mutate(grade_quartile = ntile(Grade, 4))
-nodesSoc[is.na(nodesSoc$grade_quartile),]$grade_quartile <- 0
+#nodesSoc[is.na(nodesSoc$grade_quartile),]$grade_quartile <- 0
 
 
 # merging with discussion data
@@ -204,29 +206,32 @@ We can examine student interactions with the course content at a finer level, an
 
 
 socUsage <- socpsyAct18 %>%
-  select(id, timestamp, title, role, forum_bool) %>%
+  select(name, timestamp, content, role, forum_bool) %>%
   filter(role == "S" & timestamp < as.Date('2018-11-01')) %>%
   mutate(Activity = if_else(
-    str_detect(title, "Week 2: The Social Self|Week 3:Perc|Week 4:Stereo|Week 5:Att|Week 6:Conf|Week 10:Att|Week 11:Help|Applied Social"), 
+    str_detect(content, "Week 2: The Social Self|Week 3:Perc|Week 4:Stereo|Week 5:Att|Week 6:Conf|Week 10:Att|Week 11:Help|Applied Social"), 
     "Tutorial",
     if_else(forum_bool, "Forum", "Other")
     )
     )%>%
   mutate(Activity = if_else(is.na(Activity), "Other", Activity)) %>%
-  plyr::rename(replace = c("id" = "ID")) %>%
-  merge(nodesBio %>% select(ID, Accesses, Interactions, Grade, ForumViews), all.x = T)
+  plyr::rename(replace = c("name" = "Name")) %>% # ERROR IN THIS NEXT LINE, JOIN NOT RECOGNISING AND RETURNING NA
+  left_join(nodesSoc %>% 
+          select(Name, Accesses, Interactions, grade_quartile, ForumViews) %>% 
+          unique(), by = c("Name"))
 
 socGameActPlot <- socUsage %>% 
-  ggplot(aes(x = timestamp, y = Grade, color = ForumViews)) +
+  ggplot(aes(x = timestamp, y = grade_quartile, color = ForumViews)) +
   scale_color_gradient2(name = "Forum Participation", 
                          low = "Black",
                           mid = "Dark Blue",
                          high = "Red",
                          midpoint = 5,
                          trans = "log1p",
-                         breaks = c(2, 10, 50, 250, 1250, 6250)) +  
-  geom_jitter(alpha = 0.002) +
+                         breaks = c(2, 10, 50, 250)) +  
+  geom_jitter(alpha = 0.01) +
   theme(axis.title.x = element_blank()) + 
+  scale_y_continuous(name = "Grade Quartile") +
   ggthemes::theme_tufte() + 
   facet_grid(Activity ~ .) +
   ggtitle("Usage of items in Social Psychology")
@@ -237,40 +242,49 @@ socGameActPlot
 
 ```
 
-``` {r eval = F}
+``` {r eval = T}
 # Looking at what was clicked prior to forum access
 
-socForumExamine <- socpsyAct18 %>% filter(role == "S") %>% select(id, timestamp, title, forum_bool) %>% arrange(id, timestamp)
+socForumExamine <- socpsyAct18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>% arrange(id, timestamp)
 r = length(socForumExamine$id)
-socForumAccess <- data.frame(from = socForumExamine[1:r - 1, "title"],
-                             to = socForumExamine[2:r, "title"],
+socForumAccess <- data.frame(from = socForumExamine[1:r - 1, "content"],
+                             to = socForumExamine[2:r, "content"],
                              idFrom = socForumExamine[1:r - 1, "id"],
                              idTo = socForumExamine[2:r, "id"],
-                             forum = socForumExamine[2:r, "forum_bool"])
+                             toForum = socForumExamine[2:r, "forum_bool"])
+names(socForumAccess) <- c("from", "to", "idFrom", "idTo", "toForum")
+socForumAccess <- socForumAccess %>% filter(from != to, idFrom == idTo) # was filtering for forum true as well.
 socForumAccessEdges <- socForumAccess %>% 
-  filter(from != to, idFrom == idTo, forum) %>% 
+  filter(from != to, idFrom == idTo, toForum) %>% 
   select(from, to) %>% 
   group_by(from, to) %>% 
   summarise(weight = n())
+
 socForumAccessNodes <- socForumExamine %>% 
-  select(title, forum_bool, title) %>%
-  mutate(PageType = if_else(str_detect(title, "Week 2: The Social Self|Week 3:Perc|Week 4:Stereo|Week 5:Att|Week 6:Conf|Week 10:Att|Week 11:Help|Applied Social"), "Tutorial", 
+  select(content, forum_bool, timestamp) %>%
+  group_by(content, forum_bool) %>%
+  summarise(first_access = min(timestamp), hits = n()) %>%
+  mutate(PageType = if_else(str_detect(content, "Week 2: The Social Self|Week 3:Perc|Week 4:Stereo|Week 5:Att|Week 6:Conf|Week 10:Att|Week 11:Help|Applied Social"), "Tutorial", 
                             if_else(forum_bool, "Forum", "Other"))) %>%
   mutate(PageType = if_else(is.na(PageType), "Other", PageType)) %>%
-  group_by(title, PageType) %>% 
-  summarise(hits = n())
+  arrange(first_access)
+
 socForumAccessGraph <- tbl_graph(nodes = socForumAccessNodes,
                                  edges = socForumAccessEdges,
                                  directed = TRUE)
 
 socFAplot <- socForumAccessGraph %>% activate(nodes) %>% filter(!node_is_isolated()) %>% 
-  ggraph(layout = "linear") + 
+  ggraph(layout = "linear", circular = T) + 
   geom_node_point(aes(size = hits, color = PageType)) +
   geom_edge_arc2(aes(alpha = weight)) +
+  scale_edge_alpha(guide = "none") +
+  scale_size_continuous(guide = "none") +
   scale_color_brewer(palette = "Dark2") +
+  geom_node_text(aes(label = content, alpha = hits/3), size = 2,repel = T) +
+  scale_alpha(guide = "none") +
   theme_graph() 
 
-socFAplot + ggtitle("Social Psychology navigation to Forum Pages")
+socFAplot + ggtitle("Social Psychology Site Navigation")
 ```
 
 \newpage
@@ -281,29 +295,30 @@ socFAplot + ggtitle("Social Psychology navigation to Forum Pages")
 # Using the ACTIVITY_ACCUMULATOR data to examine item activity
 
 bioUsage <- biopsyAct18 %>%
-  select(id, timestamp, title, role, forum_bool) %>%
+  select(name, timestamp, content, role, forum_bool) %>%
   filter(role == "S" ) %>%
   #& timestamp < as.Date('2018-11-01')) %>%
-  mutate(Activity = if_else(str_detect(tolower(title), "game"), "Game",
-                                   if_else(str_detect(tolower(title), "in the lab"), "In the lab",
+  mutate(Activity = if_else(str_detect(tolower(content), "game"), "Game",
+                                   if_else(str_detect(tolower(content), "in the lab"), "In the lab",
                                            if_else(forum_bool, "Forum", "Other")))) %>%
   mutate(Activity = if_else(is.na(Activity), "Other", Activity)) %>%
-  plyr::rename(replace = c("id" = "ID")) %>%
-  merge(nodesBio %>% select(ID, Accesses, Interactions, Grade, ForumViews), all.x = T)
+  plyr::rename(replace = c("name" = "Name")) %>%
+  merge(nodesBio %>% select(Name, Accesses, Interactions, grade_quartile, ForumViews), all.x = T)
 
 
 
 bioGameActPlot <- bioUsage %>% 
-  ggplot(aes(x = timestamp, y = Grade, color = ForumViews)) +
+  ggplot(aes(x = timestamp, y = grade_quartile, color = ForumViews)) +
   scale_color_gradient2(name = "Forum Participation", 
                          low = "Black",
                           mid = "Dark Blue",
                          high = "Red",
                          midpoint = 5,
                          trans = "log1p",
-                         breaks = c(2, 10, 50, 250, 1250, 6250)) +  
+                         breaks = c(2, 10, 50, 250, 1250)) +  
   geom_jitter(alpha = 0.002) +
   theme(axis.title.x = element_blank()) + 
+  scale_y_continuous(name = "Grade Quartile") +
   ggthemes::theme_tufte() + 
   facet_grid(Activity ~ .) +
   ggtitle("Usage of items in Biopsychology")
@@ -311,42 +326,70 @@ bioGameActPlot <- bioUsage %>%
 bioUsage %>% group_by(Activity) %>% tally() %>% knitr::kable()
 
 bioGameActPlot
+
+bioGameActPlotFocus <- bioUsage %>% filter(timestamp < as.Date('2018-10-15')) %>%
+  ggplot(aes(x = timestamp, y = grade_quartile, color = ForumViews)) +
+  scale_color_gradient2(name = "Forum Participation", 
+                         low = "Black",
+                          mid = "Dark Blue",
+                         high = "Red",
+                         midpoint = 5,
+                         trans = "log1p",
+                         breaks = c(2, 10, 50, 250, 1250)) +  
+  geom_jitter(alpha = 0.002) +
+  theme(axis.title.x = element_blank()) + 
+  scale_y_continuous(name = "Grade Quartile") +
+  ggthemes::theme_tufte() + 
+  facet_grid(Activity ~ .) +
+  ggtitle("Usage of items in Biopsychology - focus on active session")
+
+
+bioGameActPlotFocus
 ```
 
-``` {r Biopsych_forum_access, eval = F}
+``` {r Biopsych_forum_access, eval = T}
 # Looking at what was clicked prior to forum access
 
-bioForumExamine <- biopsyAct18 %>% filter(role == "S") %>% select(id, timestamp, title, forum_bool) %>% arrange(id, timestamp)
+bioForumExamine <- biopsyAct18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>% arrange(id, timestamp)
 r = length(bioForumExamine$id)
-bioForumAccess <- data.frame(from = bioForumExamine[1:r - 1, "title"],
-                             to = bioForumExamine[2:r, "title"],
+bioForumAccess <- data.frame(from = bioForumExamine[1:r - 1, "content"],
+                             to = bioForumExamine[2:r, "content"],
                              idFrom = bioForumExamine[1:r - 1, "id"],
                              idTo = bioForumExamine[2:r, "id"],
                              forum = bioForumExamine[2:r, "forum_bool"])
+names(bioForumAccess) <- c("from", "to", "idFrom", "idTo", "toForum")
+
 bioForumAccessEdges <- bioForumAccess %>% 
-  filter(from != to, idFrom == idTo, forum) %>% 
+  filter(from != to, idFrom == idTo, toForum) %>% 
   select(from, to) %>% 
   group_by(from, to) %>% 
   summarise(weight = n())
+
 bioForumAccessNodes <- bioForumExamine %>% 
-  select(title, forum_bool, title) %>%
-  mutate(PageType = if_else(str_detect(title, "lab|Lab"), "Lab", 
+  select(content, forum_bool, timestamp) %>%
+  group_by(content, forum_bool) %>%
+  summarise(first_access = min(timestamp), hits = n()) %>%
+  mutate(PageType = if_else(str_detect(content, "lab|Lab"), "Lab", 
                             if_else(forum_bool, "Forum", "Other"))) %>%
   mutate(PageType = if_else(is.na(PageType), "Other", PageType)) %>%
-  group_by(title, PageType) %>% 
-  summarise(hits = n())
+  arrange(first_access)
+
 bioForumAccessGraph <- tbl_graph(nodes = bioForumAccessNodes,
                                  edges = bioForumAccessEdges,
                                  directed = TRUE)
 
-bioFAplot <- bioForumAccessGraph %>% activate(nodes) %>% filter(!node_is_isolated()) %>% 
-  ggraph(layout = "linear") + 
+bioFAplot <- bioForumAccessGraph  %>% activate(nodes) %>% filter(!node_is_isolated()) %>% 
+  ggraph(layout = "linear", circular = T) + 
   geom_node_point(aes(size = hits, color = PageType)) +
   geom_edge_arc2(aes(alpha = weight)) +
+  scale_edge_alpha(guide = "none") +
+  scale_size_continuous(guide = "none") +
   scale_color_brewer(palette = "Dark2") +
+  geom_node_text(aes(label = content, alpha = hits/3), size = 2,repel = T) +
+  scale_alpha(guide = "none") +
   theme_graph() 
 
-bioFAplot + ggtitle("Biopsychology navigation to Forum Pages")
+bioFAplot + ggtitle("Biopsychology Site Navigation")
 ```
 
 \newpage
