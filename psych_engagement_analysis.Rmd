@@ -31,7 +31,7 @@ POSTSFILE <- "posts Psychology 201860.csv"
 
 # Activity Accumulator Data - - - - - - - - - - - - - 
 tidyAA <- function(df) {
-  df$id <- factor(df$id)
+  #df$id <- factor(df$id)
   df <- df %>%
     filter(!is.na(id)) %>%
     mutate(forum_bool = str_detect(tolower(data), "discus|thread|forum"),
@@ -41,10 +41,10 @@ tidyAA <- function(df) {
   df <- df %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
   return(df)
 } # -  - - - - - - --- - - - - - --- - - - --- - - -- 
-socpsyAct18 <- read_csv(file.path(DATDIR, SOCAAFILE)) 
+socpsyAct18 <- read_csv(file.path(DATDIR, SOCAAFILE), col_types = "ffTcccccffcccf") 
 socpsyAct18 <- tidyAA(socpsyAct18)
 
-biopsyAct18 <- read_csv(file.path(DATDIR, BIOAAFILE))
+biopsyAct18 <- read_csv(file.path(DATDIR, BIOAAFILE), col_types = "ffTcccccffcccf")
 biopsyAct18 <- tidyAA(biopsyAct18)
 
 # Node preparation (i.e. data for each student)
@@ -55,10 +55,10 @@ marks18 <- read_csv(file.path(DATDIR, MARKSFILE)) %>%
 marksSummary18 <- marks18 %>% 
   group_by(subject_name, student, id) %>%
   summarise(avg_grade = mean(mark, na.rm = T))
-marksSoc18 <- marks18 %>% filter(subject_name == "Social Psychology")
-marksBio18 <- marks18 %>% filter(subject_name == "Biopsychology")
+marksSoc18 <- marksSummary18 %>% filter(subject_name == "Social Psychology")
+marksBio18 <- marksSummary18 %>% filter(subject_name == "Biopsychology")
 
-# Discussion views from aa ------------------------------------------
+# Discussion views from aa -------------------------------------------
 discussionViews <- function(df) {
   df %>%
     select(name, subject, forum_bool, data) %>%
@@ -79,6 +79,12 @@ aaSummaryBio <- aa_summary_by_user(biopsyAct18)
 aaSummarySoc <- aa_summary_by_user(socpsyAct18)
 
 # Node assembly
+# nodeData needs the fields:
+# ID, Name, Role, Grade, Subject, Accesses, Interactions --- replace this with other stuff, 
+
+
+
+
 
 studentNodeData <- studentNodeData %>% plyr::rename(replace = c("Avg Learn Grade" = "Grade",
                                                   "Course item Interactions" = "Interactions",
