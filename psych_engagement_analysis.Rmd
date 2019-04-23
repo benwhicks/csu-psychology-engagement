@@ -15,35 +15,75 @@ suppressPackageStartupMessages(library(network))
 suppressPackageStartupMessages(library(tidygraph))
 suppressPackageStartupMessages(library(ggraph))
 suppressPackageStartupMessages(library(ggthemes))
+suppressPackageStartupMessages(library(lakit))
 ```
 
 ``` {r importing}
-datdir <- file.path("~", "Data", "Psych")
 source(file.path('R','psych_functions.R'))
+DATDIR <- file.path("~", "Data", "Psychology")
+BIOAAFILE <- "aa Biopsychology 201860.csv"
+SOCAAFILE <- "aa Social Psychology 201860.csv"
+MARKSFILE <- "marks Psychology 201860.csv"
+BIOCCFILE <- "cc Biopsychology 201860.csv"
+SOCCCFILE <- "cc Social Psychology 201860.csv"
+POSTSFILE <- "posts Psychology 201860.csv"
 
-timelineDataRaw <- read_csv(file.path(datdir, "PSY Pyramid Weekly Activity.csv"))
-snData <- read_csv(file.path(datdir, "PSY Posts and Replies.csv"),
-                   col_types = "cccffn")
-roleData <- read_csv(file.path(datdir, "PSY User Roles.csv"),
-                     col_types = "ccfc")
-roleData <- roleData %>% 
-  filter(str_detect(Subject, "203|208")) %>% unique() # honours students are doubled up
 
-marksData <- read_csv(file.path(datdir, "PSY Marks.csv"))
-marksData$Score <- as.numeric(marksData$Score) # some of the mark data was NULL (missing) and this forces it into NA's, and the remainder into numeric form
-accessData <- read_csv(file.path(datdir, "PSY Pyramid Course Accesses.csv"),
-                       col_types = "cfcnn")
-interactionsData <- read_csv(file.path(datdir, "PSY Pyramid Course Interactions.csv"),
-                             col_types = "cfcnn")
-pyramidData <- merge(interactionsData, accessData, all = T)
-pyramidData <- pyramidData %>% plyr::rename(replace = c("CourseID" = "Subject", "ID" = "SISID"))
-pyramidData <- pyramidData %>% filter(str_detect(Subject, "203|208"))
-pyramidData$SISID <- NULL # it really is useless
+# Activity Accumulator Data - - - - - - - - - - - - - 
+tidyAA <- function(df) {
+  df$id <- factor(df$id)
+  df <- df %>%
+    filter(!is.na(id)) %>%
+    mutate(forum_bool = str_detect(tolower(data), "discus|thread|forum"),
+                                      content = tidyDataField(data),
+                                      name = paste0(lastname, ', ', firstname)) %>%
+    rename(session = session_id)
+  df <- df %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
+  return(df)
+} # -  - - - - - - --- - - - - - --- - - - --- - - -- 
+socpsyAct18 <- read_csv(file.path(DATDIR, SOCAAFILE)) 
+socpsyAct18 <- tidyAA(socpsyAct18)
 
-studentNodeData <- merge(pyramidData, roleData)
+biopsyAct18 <- read_csv(file.path(DATDIR, BIOAAFILE))
+biopsyAct18 <- tidyAA(biopsyAct18)
+
+# Node preparation (i.e. data for each student)
+
+# Mark data
+marks18 <- read_csv(file.path(DATDIR, MARKSFILE)) %>%
+  mutate(mark = score / possible) 
+marksSummary18 <- marks18 %>% 
+  group_by(subject_name, student, id) %>%
+  summarise(avg_grade = mean(mark, na.rm = T))
+marksSoc18 <- marks18 %>% filter(subject_name == "Social Psychology")
+marksBio18 <- marks18 %>% filter(subject_name == "Biopsychology")
+
+# Discussion views from aa ------------------------------------------
+discussionViews <- function(df) {
+  df %>%
+    select(name, subject, forum_bool, data) %>%
+    filter(  forum_bool |
+           str_detect(tolower(data), "discus|thread|forum")
+         ) %>% 
+    group_by(subject, name) %>%
+    summarise(ForumViews = n()) %>%
+    group_by(name) %>%
+    summarise(ForumViews = sum(ForumViews)) %>%
+    rename(Name = name)  
+} # ------------------------------------------------------------------
+discussionViewsBio <- discussionViews(biopsyAct18)
+discussionViewsSoc <- discussionViews(socpsyAct18)
+
+# Other interaction data from aa
+aaSummaryBio <- aa_summary_by_user(biopsyAct18)
+aaSummarySoc <- aa_summary_by_user(socpsyAct18)
+
+# Node assembly
+
 studentNodeData <- studentNodeData %>% plyr::rename(replace = c("Avg Learn Grade" = "Grade",
                                                   "Course item Interactions" = "Interactions",
                                                   "Course Accesses" = "Accesses"))
+
 teacherNodeData <- roleData %>% filter(ID %in% setdiff(roleData$ID, studentNodeData$ID) & ID %in% snData$MsgFrom)
 teacherNodeData$Grade <- NA
 teacherNodeData$Interactions <- NA
@@ -82,44 +122,6 @@ edges <- edges %>%
   unique()
 
 
-# New version of PSY data - testing
-socpsyAct18 <- read_csv(file.path(datdir, "aa stats Social Psychology.csv")) %>% filter(!is.na(id))
-socpsyAct18$id <- factor(socpsyAct18$id)
-socpsyAct18 <- socpsyAct18 %>% mutate(forum_bool = str_detect(tolower(data), "discus|thread|forum"),
-                                      content = tidyDataField(data),
-                                      name = paste0(lastname, ', ', firstname))
-socpsyAct18 <- socpsyAct18 %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
-
-
-biopsyAct18 <- read_csv(file.path(datdir, "aa stats Biopsychology.csv")) %>% filter(!is.na(id))
-biopsyAct18$id <- factor(biopsyAct18$id)
-biopsyAct18 <- biopsyAct18 %>% mutate(forum_bool = str_detect(tolower(data), "discus|thread|forum"),
-                                      content = tidyDataField(data),
-                                      name = paste0(lastname, ', ', firstname))
-biopsyAct18 <- biopsyAct18 %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
-
-discussionViewsBio <- biopsyAct18 %>% 
-  select(name, subject, forum_bool, data) %>%
-  filter(  forum_bool |
-           str_detect(tolower(data), "discus|thread|forum")
-         ) %>% 
-  group_by(subject, name) %>%
-  summarise(ForumViews = n()) %>%
-  group_by(name) %>%
-  summarise(ForumViews = sum(ForumViews)) %>%
-  plyr::rename(replace = c("name" = "Name"))
-
-
-discussionViewsSoc <- socpsyAct18 %>% 
-  select(name, subject, forum_bool, data) %>%
-  filter(  forum_bool |
-             str_detect(tolower(data), "discus|thread|forum")
-  ) %>% 
-  group_by(subject, name) %>%
-  summarise(ForumViews = n()) %>%
-  group_by(name) %>%
-  summarise(ForumViews = sum(ForumViews)) %>%
-  plyr::rename(replace = c("name" = "Name"))
 
 # Graphing in tidygraph and ggraph
 
