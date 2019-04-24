@@ -28,38 +28,38 @@ BIOCCFILE <- "cc Biopsychology 201860.csv"
 SOCCCFILE <- "cc Social Psychology 201860.csv"
 POSTSFILE <- "posts Psychology 201860.csv"
 
-
-# Activity Accumulator Data - - - - - - - - - - - - - 
-tidyAA <- function(df) {
-  #df$id <- factor(df$id)
+snData <- read_csv(file.path(DATDIR, POSTSFILE), col_types = "cccffn")
+# Activity Accumulator Data --------------------------------------
+tidy_aa <- function(df) {
   df <- df %>%
     filter(!is.na(id)) %>%
     mutate(forum_bool = str_detect(tolower(data), "discus|thread|forum"),
                                       content = tidyDataField(data),
                                       name = paste0(lastname, ', ', firstname)) %>%
-    rename(session = session_id)
+    rename(session = session_id, id = s_id, login_id = id)
   df <- df %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
   return(df)
-} # -  - - - - - - --- - - - - - --- - - - --- - - -- 
-socpsyAct18 <- read_csv(file.path(DATDIR, SOCAAFILE), col_types = "ffTcccccffcccf") 
-socpsyAct18 <- tidyAA(socpsyAct18)
+} # --------------------------------------------------------------
+aaSoc18 <- read_csv(file.path(DATDIR, SOCAAFILE), col_types = "ffTcccccffcccf") # can cause performance hit, if so do not specity columns and add as.factor lines to tidy_aa 
+aaSoc18 <- tidy_aa(aaSoc18)
 
-biopsyAct18 <- read_csv(file.path(DATDIR, BIOAAFILE), col_types = "ffTcccccffcccf")
-biopsyAct18 <- tidyAA(biopsyAct18)
+aaBio18 <- read_csv(file.path(DATDIR, BIOAAFILE), col_types = "ffTcccccffcccf")
+aaBio18 <- tidy_aa(aaBio18)
 
 # Node preparation (i.e. data for each student)
 
 # Mark data
 marks18 <- read_csv(file.path(DATDIR, MARKSFILE)) %>%
-  mutate(mark = score / possible) 
+  mutate(mark = score / possible, id = factor(id)) 
 marksSummary18 <- marks18 %>% 
   group_by(subject_name, student, id) %>%
-  summarise(avg_grade = mean(mark, na.rm = T))
-marksSoc18 <- marksSummary18 %>% filter(subject_name == "Social Psychology")
-marksBio18 <- marksSummary18 %>% filter(subject_name == "Biopsychology")
+  summarise(avg_grade = mean(mark, na.rm = T)) %>%
+  rename(name = student, subject = subject_name)
+marksSoc18 <- marksSummary18 %>% filter(subject == "Social Psychology")
+marksBio18 <- marksSummary18 %>% filter(subject == "Biopsychology")
 
 # Discussion views from aa -------------------------------------------
-discussionViews <- function(df) {
+discussion_views <- function(df) {
   df %>%
     select(name, subject, forum_bool, data) %>%
     filter(  forum_bool |
@@ -68,107 +68,94 @@ discussionViews <- function(df) {
     group_by(subject, name) %>%
     summarise(ForumViews = n()) %>%
     group_by(name) %>%
-    summarise(ForumViews = sum(ForumViews)) %>%
-    rename(Name = name)  
+    summarise(ForumViews = sum(ForumViews))
 } # ------------------------------------------------------------------
-discussionViewsBio <- discussionViews(biopsyAct18)
-discussionViewsSoc <- discussionViews(socpsyAct18)
+discussionViewsBio <- discussion_views(aaBio18)
+discussionViewsSoc <- discussion_views(aaSoc18)
 
 # Other interaction data from aa
-aaSummaryBio <- aa_summary_by_user(biopsyAct18)
-aaSummarySoc <- aa_summary_by_user(socpsyAct18)
-
-# Node assembly
-# nodeData needs the fields:
-# ID, Name, Role, Grade, Subject, Accesses, Interactions --- replace this with other stuff, 
+aaSummaryBio <- aa_summary_by_user(aaBio18)
+aaSummaryBio <- merge(aaSummaryBio, unique(aaBio18 %>% select(id, name)))
+aaSummarySoc <- aa_summary_by_user(aaSoc18)
+aaSummarySoc <- merge(aaSummarySoc, unique(aaSoc18 %>% select(id, name)))
 
 
+# Node assembly ----------------------------------------------------------
+node_merge_and_make <- function(aaData, marksData, discussionsData) {
+  df <- aaData %>% select(-id) %>%
+  merge(marksData) %>%
+  merge(discussionsData, all.x = T) %>%
+  select(ID = id, Name = name, Subject = subject, 
+         Grade = avg_grade, Accesses = accesses, 
+         mean_clicks_per_access, sd_clicks, 
+         median_time_per_access, sd_time, 
+         TotalTime = total_time,
+         ForumViews) %>%
+    mutate(grade_quartile = ntile(Grade, 4), ID = factor(ID))
+  if (any(is.na(df$ForumViews))) {
+    df[is.na(df$ForumViews),]$ForumViews <- 0
+  }
+  if (any(is.na(df$Accesses))) {
+    df[is.na(df$Accesses),]$Accesses <- 0  
+  }
+  if (any(is.na(df$TotalTime))) {
+    df[is.na(df$TotalTime),]$TotalTime <- 0
+  }
+  df$Role <- "S"
+  return(df)
+} # ----------------------------------------------------------------------
+nodesBio <- node_merge_and_make(aaSummaryBio, marksBio18, discussionViewsBio)
+nodesSoc <- node_merge_and_make(aaSummarySoc, marksSoc18, discussionViewsSoc)
 
+# -----------------------------------------------------------------------------
+subject_code_to_name <- function(x) {
+  ifelse(str_detect(x, "208|458"), "Biopsychology", "Social Psychology")
+} # ---------------------------------------------------------------------------
 
+## ADD ##
+allStudentIDs <- unique(marks18$id)
+allForumIDs <- unique(snData$msgfrom)
+teacherIDs <- setdiff(allForumIDs, allStudentIDs)
+teacherNodes <- snData %>% 
+  filter(msgfrom %in% teacherIDs) %>% 
+  select(Name = poster, ID = msgfrom, Subject = subject) %>% 
+  mutate(ID = as.factor(ID), 
+         Grade = 0, Accesses = 100, ForumViews = 200, Role = "T", Subject = subject_code_to_name(Subject), 
+         TotalTime = as.duration(200000), median_time_per_access = as.duration(2000), sd_time = as.duration(200),
+         mean_clicks_per_access = 0, sd_clicks = 0, grade_quartile = 0) %>%
+  unique()
+teacherNodesBio <- teacherNodes %>% filter(Subject == "Biopsychology")
+teacherNodesSoc <- teacherNodes %>% filter(Subject == "Social Psychology")
 
-studentNodeData <- studentNodeData %>% plyr::rename(replace = c("Avg Learn Grade" = "Grade",
-                                                  "Course item Interactions" = "Interactions",
-                                                  "Course Accesses" = "Accesses"))
+nodesBio <- rbind(nodesBio, teacherNodesBio)
+nodesSoc <- rbind(nodesSoc, teacherNodesSoc)
 
-teacherNodeData <- roleData %>% filter(ID %in% setdiff(roleData$ID, studentNodeData$ID) & ID %in% snData$MsgFrom)
-teacherNodeData$Grade <- NA
-teacherNodeData$Interactions <- NA
-teacherNodeData$Accesses <- 1
-nodeData <- rbind(studentNodeData, teacherNodeData)
-
-# Building network
-edgesAll <- data.frame(from = snData$MsgFrom, 
-                       to = snData$MsgTo, 
-                       weight = snData$Strength, 
-                       Subject = snData$Subject)
+# Edge assembly
+edgesAll <- data.frame(from = snData$msgfrom, 
+                       to = snData$msgto, 
+                       weight = snData$strength, 
+                       Subject = snData$subject) %>%
+  mutate(Subject = subject_code_to_name(Subject))
 questions <- edgesAll %>% 
   filter(to == "NULL") %>% 
   group_by(from, Subject) %>% 
   summarise(Questions = sum(weight))
 edges <- edgesAll %>% filter(to != "NULL")
-
-nodes <- data.frame(ID = as.factor(nodeData$ID), 
-                Name = as.character(nodeData$Name), 
-                Role = nodeData$Role,
-                Accesses = nodeData$Accesses,
-                Interactions = nodeData$Interactions,
-                Grade = nodeData$Grade,
-                Subject = nodeData$Subject
-)
-
-
-missingNodeDataIDs <- setdiff(union(edges$from, edges$to), nodes$ID)
-
-# Editing subject field - might be redundant
-nodes <- nodes %>% 
-  mutate(Subject = ifelse(str_detect(Subject, "208|458"), "Biopsychology", "Social Psychology")) %>%
-  unique() 
-edges <- edges %>% 
-  mutate(Subject = ifelse(str_detect(Subject, "208|458"), "Biopsychology", "Social Psychology")) %>%
-  unique()
-
-
-
-# Graphing in tidygraph and ggraph
-
-nodesBio <- nodes %>% filter(str_detect(Subject, "Bio"))
 edgesBio <- edges %>% filter(str_detect(Subject, "Bio"))
-nodesSoc <- nodes %>% filter(str_detect(Subject, "Social"))
 edgesSoc <- edges %>% filter(str_detect(Subject, "Social"))
 
-# Filtering strange IDs
-#nodesBio <- nodesBio %>% filter(ID %in% discussionViewsBio$ID | !(Name %in% discussionViewsBio$Name))
-#nodesSoc <- nodesSoc %>% filter(ID %in% discussionViewsSoc$ID | !(Name %in% discussionViewsSoc$Name))
-
-# getting grade quartiles
-nodesBio <- nodesBio %>% mutate(grade_quartile = ntile(Grade, 4)) 
-#nodesBio[is.na(nodesBio$grade_quartile),]$grade_quartile <- 0
-
-nodesSoc <- nodesSoc %>% mutate(grade_quartile = ntile(Grade, 4))
-#nodesSoc[is.na(nodesSoc$grade_quartile),]$grade_quartile <- 0
-
-
-# merging with discussion data
-nodesBio <- merge(nodesBio, discussionViewsBio, all.x = T)
-nodesBio[is.na(nodesBio$ForumViews),]$ForumViews <- 0
-nodesSoc <- merge(nodesSoc, discussionViewsSoc, all.x = T)
-nodesSoc[is.na(nodesSoc$ForumViews),]$ForumViews <- 0
-
-# converting NAs in Accesses to 0
-nodesBio <- nodesBio %>% mutate(Accesses = if_else(is.na(Accesses), 0, Accesses))
-nodesSoc <- nodesSoc %>% mutate(Accesses = if_else(is.na(Accesses), 0, Accesses))
 
 # Making graph structures
-BioPsyNet <- tbl_graph(nodes = nodesBio, edges = edgesBio) 
-SocPsyNet <- tbl_graph(nodes = nodesSoc, edges = edgesSoc)
+networkBio <- tbl_graph(nodes = nodesBio, edges = edgesBio) 
+networkSoc <- tbl_graph(nodes = nodesSoc, edges = edgesSoc)
 
 ```
 
 # Activity
 
-## Timeline Averages
 
-``` {r timelines}
+``` {r timelines, eval = F}
+## Timeline Averages
 timelineData <- timelineDataRaw %>% mutate(subject = substr(`subject code`, 3, 8),
                                            session = as.factor(substr(`subject code`, 10, 15)))
 timeSum <- timelineData[timelineData$subject != "PSY458",] %>% 
@@ -198,9 +185,12 @@ t2Min <- timeSumShort[timeSumShort$measure == "Avg Minutes per Site Access" & ti
 
 ttestInt <- t.test(t2int, t1int, paired = T)
 ttestMin <- t.test(t2Min, t1Min, paired = T)
+
+# Old text below:
+# The most significant difference between sessions of the results above is for Social Psychology (PSY203) on the *Average Interactions per Week* and *Avg Minutes per Site Access* metrics. The interactions show an increase of between `r round(ttestInt$conf.int[[1]],2)` and `r round(ttestInt$conf.int[[2]], 2)` (95% confidence, paired t-test), and a similar test on the minutes per site access shows an increase of between `r round(ttestMin$conf.int[[1]],2)` and `r round(ttestMin$conf.int[[2]], 2)`. For the latter, it is worth flagging that mean duration on site can be thrown by students leaving the browser open - median would be a better measure here.
 ```
 
-The most significant difference between sessions of the results above is for Social Psychology (PSY203) on the *Average Interactions per Week* and *Avg Minutes per Site Access* metrics. The interactions show an increase of between `r round(ttestInt$conf.int[[1]],2)` and `r round(ttestInt$conf.int[[2]], 2)` (95% confidence, paired t-test), and a similar test on the minutes per site access shows an increase of between `r round(ttestMin$conf.int[[1]],2)` and `r round(ttestMin$conf.int[[2]], 2)`. For the latter, it is worth flagging that mean duration on site can be thrown by students leaving the browser open - median would be a better measure here.
+
 
 ## Item Activity
 
@@ -211,9 +201,7 @@ We can examine student interactions with the course content at a finer level, an
 
 ``` {r social_psych_usage}
 # Using the ACTIVITY_ACCUMULATOR data to examine item activity
-
-
-socUsage <- socpsyAct18 %>%
+socUsage <- aaSoc18 %>%
   select(name, timestamp, content, role, forum_bool) %>%
   filter(role == "S" & timestamp < as.Date('2018-11-01')) %>%
   mutate(Activity = if_else(
@@ -225,7 +213,7 @@ socUsage <- socpsyAct18 %>%
   mutate(Activity = if_else(is.na(Activity), "Other", Activity)) %>%
   plyr::rename(replace = c("name" = "Name")) %>% # ERROR IN THIS NEXT LINE, JOIN NOT RECOGNISING AND RETURNING NA
   left_join(nodesSoc %>% 
-          select(Name, Accesses, Interactions, grade_quartile, ForumViews) %>% 
+          select(Name, Accesses, TotalTime, grade_quartile, ForumViews) %>% 
           unique(), by = c("Name"))
 
 socGameActPlot <- socUsage %>% 
@@ -253,7 +241,7 @@ socGameActPlot
 ``` {r eval = T}
 # Looking at what was clicked prior to forum access
 
-socForumExamine <- socpsyAct18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>% arrange(id, timestamp)
+socForumExamine <- aaSoc18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>% arrange(id, timestamp)
 r = length(socForumExamine$id)
 socForumAccess <- data.frame(from = socForumExamine[1:r - 1, "content"],
                              to = socForumExamine[2:r, "content"],
@@ -302,7 +290,7 @@ socFAplot + ggtitle("Social Psychology Site Navigation")
 ``` {r biopsych_usage}
 # Using the ACTIVITY_ACCUMULATOR data to examine item activity
 
-bioUsage <- biopsyAct18 %>%
+bioUsage <- aaBio18 %>%
   select(name, timestamp, content, role, forum_bool) %>%
   filter(role == "S" ) %>%
   #& timestamp < as.Date('2018-11-01')) %>%
@@ -311,7 +299,8 @@ bioUsage <- biopsyAct18 %>%
                                            if_else(forum_bool, "Forum", "Other")))) %>%
   mutate(Activity = if_else(is.na(Activity), "Other", Activity)) %>%
   plyr::rename(replace = c("name" = "Name")) %>%
-  merge(nodesBio %>% select(Name, Accesses, Interactions, grade_quartile, ForumViews), all.x = T)
+  merge(nodesBio %>% select(Name, Accesses, grade_quartile, ForumViews, 
+                            mean_clicks_per_access, sd_clicks, median_time_per_access, sd_time, TotalTime), all.x = T)
 
 
 
@@ -353,12 +342,18 @@ bioGameActPlotFocus <- bioUsage %>% filter(timestamp < as.Date('2018-10-15')) %>
 
 
 bioGameActPlotFocus
+
+# nodesBioAnom <- nodesBio %>% filter(Role == "S") %>%
+#   select(Grade, grade_quartile, Accesses, TotalTime, ForumViews, mean_clicks_per_access, sd_clicks, median_time_per_access, sd_time)
+# nodesBioMatrix <- as.data.frame(sapply(nodesBioAnom, as.numeric))
+# ggpairs( nodesBioMatrix, aes(color = as.factor(grade_quartile)), alpha = 0.2) + scale_color_brewer(palette = "Dark2")
+
 ```
 
 ``` {r Biopsych_forum_access, eval = T}
 # Looking at what was clicked prior to forum access
 
-bioForumExamine <- biopsyAct18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>% arrange(id, timestamp)
+bioForumExamine <- aaBio18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>% arrange(id, timestamp)
 r = length(bioForumExamine$id)
 bioForumAccess <- data.frame(from = bioForumExamine[1:r - 1, "content"],
                              to = bioForumExamine[2:r, "content"],
@@ -402,6 +397,54 @@ bioFAplot + ggtitle("Biopsychology Site Navigation")
 
 \newpage
 
+# Modelling
+
+``` {r modelling_setup}
+suppressPackageStartupMessages(library(dendextend))
+make_normed_matrix <- function(df, return_ids = FALSE) {
+  ids <- df$ID
+  df <- as.data.frame(sapply(df %>% 
+                         filter(Role == "S") %>% 
+                         select(-ID, -Name, -Subject, -Role, -grade_quartile), 
+                       as.numeric))
+  #gq <- df$grade_quartile # does not need to be normed
+  df <- scale(df)
+  if (return_ids) {
+    df$ID <- ids
+  }
+  #df$grade_quartile <- gq
+  return(df)
+}
+
+nodeMatrixBio <- make_normed_matrix(nodesBio)
+nodeMatrixSoc <- make_normed_matrix(nodesSoc)
+nodeMatrix <- make_normed_matrix(rbind(nodesBio, nodesSoc))
+
+jet.colors <-     colorRampPalette(c("#00007F", "blue", "#007FFF", "cyan",
+            "#7FFF7F", "yellow", "#FF7F00", "red", "#7F0000"))
+
+make_dend <- function(x, metric = "euclidian") {
+  as.dendrogram(hclust(dist(x, method = metric)))
+}
+
+draw_dendrogram <- function(x, dist_metric = "euclidian", clust_k = 4) {
+  # x is a normed numeric matrix, like those made above
+  hc <- hclust(dist(x, method = dist_metric))
+  dend <- as.dendrogram(hc)
+  clusters <- cutree(hc, clust_k)
+  clist <- jet.colors(clust_k)
+  dend %>%
+    set("leaves_col", value = clist, k = clust_k) %>%
+    set("labels", "none") %>%
+    set("branches_k_color", value = clist, k = clust_k) %>%
+    plot(axes = FALSE, leaflab = "none", xlab = paste(dist_metric, "metric"))
+}
+
+draw_dendrogram(nodeMatrix, clust_k = 6)
+```
+
+\newpage
+
 # Network analysis on forum posts and replies
 
 Discussion (forum) posts were extraced, and converted into networks. The main algorithms used are:
@@ -418,25 +461,25 @@ Each *node* in the network represents a person in the course. Each *edge* is the
 # Graphs for Social Psychology
 
 
-gSocAll <- buildGraph(SocPsyNet)
+gSocAll <- buildGraph(networkSoc)
 gSocAll + ggtitle("All Posts for PSY203: Social Psychology") #+ geom_node_text(aes(label = id), size = 2)
 
-gSocNet <- buildTrimGraph(SocPsyNet)
+gSocNet <- buildTrimGraph(networkSoc)
 gSocNet + ggtitle("All Posts for PSY203: Social Psychology (isolated points removed)")
 
-gSocLurker <- buildLurkerGraph(SocPsyNet %>% activate(nodes) %>% filter(Role == "S"))
+gSocLurker <- buildLurkerGraph(networkSoc %>% activate(nodes) %>% filter(Role == "S"))
 gSocLurker + ggtitle("All Posts for PSY203: Social Psychology, with passive forum interactions")
 
-gSocLurkerZoom <- buildLurkerGraph(SocPsyNet %>% activate(nodes) %>% filter(Role == "S" & !(node_is_isolated())))
+gSocLurkerZoom <- buildLurkerGraph(networkSoc %>% activate(nodes) %>% filter(Role == "S" & !(node_is_isolated())))
 gSocLurkerZoom + ggtitle("All Posts for PSY203: Social Psychology, with passive forum interactions (isolated points removed)")
 
-gSocStudents <- buildTrimGraph(SocPsyNet %>% activate(nodes) %>% filter(Role == "S")) 
+gSocStudents <- buildTrimGraph(networkSoc %>% activate(nodes) %>% filter(Role == "S")) 
 gSocStudents + ggtitle("Student only interactions for PSY203: Social Psychology (isolated points removed)")
 
-gSocImportance <- buildImportanceGraph(SocPsyNet %>% activate(nodes) %>% filter(Role == "S"))
+gSocImportance <- buildImportanceGraph(networkSoc %>% activate(nodes) %>% filter(Role == "S"))
 gSocImportance + ggtitle("Student only interaction by Importance for PSY203: Social Psychology (isolated points removed)")
   
-gSocCommunity <- buildClusterGraph(SocPsyNet %>% activate(nodes) %>% filter(Role == "S"))
+gSocCommunity <- buildClusterGraph(networkSoc %>% activate(nodes) %>% filter(Role == "S"))
 gSocCommunity + ggtitle("Student only Communities for PSY203: Social Psychology (isolated points removed)")
 
 ```
@@ -447,25 +490,25 @@ gSocCommunity + ggtitle("Student only Communities for PSY203: Social Psychology 
 
 ``` {r fig.height = 4}
 
-gBioAll <- buildGraph(BioPsyNet)
+gBioAll <- buildGraph(networkBio)
 gBioAll + ggtitle("All Posts for PSY208: Biopsychology") #+ geom_node_text(aes(label = id), size = 2)
 
-gBioNet <- buildTrimGraph(BioPsyNet)
+gBioNet <- buildTrimGraph(networkBio)
 gBioNet + ggtitle("All Posts for PSY208: Biopsychology (isolated points removed)")
 
-gBioLurker <- buildLurkerGraph(BioPsyNet %>% activate(nodes) %>% filter(Role == "S"))
+gBioLurker <- buildLurkerGraph(networkBio %>% activate(nodes) %>% filter(Role == "S"))
 gBioLurker + ggtitle("All Posts for PSY208: Biopsychology, with passive forum interactions")
 
-gBioLurkerZoom <- buildLurkerGraph(BioPsyNet %>% activate(nodes) %>% filter(Role == "S" & !(node_is_isolated())))
+gBioLurkerZoom <- buildLurkerGraph(networkBio %>% activate(nodes) %>% filter(Role == "S" & !(node_is_isolated())))
 gBioLurkerZoom + ggtitle("All Posts for PSY208: Biopsychology, with passive forum interactions (isolated points removed)")
 
-gBioStudents <- buildTrimGraph(BioPsyNet %>% activate(nodes) %>% filter(Role == "S")) 
+gBioStudents <- buildTrimGraph(networkBio %>% activate(nodes) %>% filter(Role == "S")) 
 gBioStudents + ggtitle("Student only interactions for PSY208: Biopsychology (isolated points removed)")
 
-gBioImportance <- buildImportanceGraph(BioPsyNet %>% activate(nodes) %>% filter(Role == "S"))
+gBioImportance <- buildImportanceGraph(networkBio %>% activate(nodes) %>% filter(Role == "S"))
 gBioImportance + ggtitle("Student only interaction by Importance for PSY208: Biopsychology (isolated points removed)")
   
-gBioCommunity <- buildClusterGraph(BioPsyNet %>% activate(nodes) %>% filter(Role == "S"))
+gBioCommunity <- buildClusterGraph(networkBio %>% activate(nodes) %>% filter(Role == "S"))
 gBioCommunity + ggtitle("Student only Communities for PSY208: Biopsychology (isolated points removed)")
 
 ```
