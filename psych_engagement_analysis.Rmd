@@ -418,17 +418,15 @@ make_normed_matrix <- function(df, return_ids = FALSE) {
 
 nodeMatrixBio <- make_normed_matrix(nodesBio)
 nodeMatrixSoc <- make_normed_matrix(nodesSoc)
-nodeMatrix <- make_normed_matrix(rbind(nodesBio, nodesSoc))
+nodes <- rbind(nodesBio, nodesSoc) %>% filter(Role == "S")
+nodeMatrix <- make_normed_matrix(nodes)
 
 jet.colors <-     colorRampPalette(c("#00007F", "blue", "#007FFF", "cyan",
             "#7FFF7F", "yellow", "#FF7F00", "red", "#7F0000"))
 
-make_dend <- function(x, metric = "euclidian") {
-  as.dendrogram(hclust(dist(x, method = metric)))
-}
 
 draw_dendrogram <- function(x, dist_metric = "euclidian", clust_k = 4) {
-  # x is a normed numeric matrix, like those made above
+  x <- make_normed_matrix(x)
   hc <- hclust(dist(x, method = dist_metric))
   dend <- as.dendrogram(hc)
   clusters <- cutree(hc, clust_k)
@@ -440,7 +438,17 @@ draw_dendrogram <- function(x, dist_metric = "euclidian", clust_k = 4) {
     plot(axes = FALSE, leaflab = "none", xlab = paste(dist_metric, "metric"))
 }
 
-draw_dendrogram(nodeMatrix, clust_k = 6)
+# Analysis of both courses combined
+k_all <- 6
+draw_dendrogram(nodeMatrix, clust_k = k_all)
+hcAll <- hclust(dist(nodeMatrix, method = "canberra"))
+clustersAll <- cutree(hcAll, 6)
+nodes$clusterfull <- clustersAll
+clusterAllSummary <- nodes %>% 
+  group_by(clusterfull) %>%
+  summarise(n = n(), Grade = mean(Grade), Accesses = mean(Accesses), clicks_pa = mean(mean_clicks_per_access),
+            sd_clicks = mean(sd_clicks), median_time_pa = mean(median_time_per_access), sd_time = mean(sd_time),
+            TotalTime = mean(TotalTime), ForumViews = mean(ForumViews))
 ```
 
 \newpage
