@@ -10,15 +10,17 @@ The following data is from the Social Psychology (PSY203 and PSY453) and Biopsyc
 knitr::opts_chunk$set(echo = F, message = F, warning = F)
 #knitr::opts_chunk$set(dev = 'png') - - uncomment to reduce file size
 suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(lubridate))
 suppressPackageStartupMessages(library(GGally))
 suppressPackageStartupMessages(library(network))
 suppressPackageStartupMessages(library(tidygraph))
 suppressPackageStartupMessages(library(ggraph))
 suppressPackageStartupMessages(library(ggthemes))
 suppressPackageStartupMessages(library(lakit))
+suppressPackageStartupMessages(library(dendextend))
 ```
 
-``` {r importing}
+``` {r importing, cache=TRUE}
 source(file.path('R','psych_functions.R'))
 DATDIR <- file.path("~", "Data", "Psychology")
 BIOAAFILE <- "aa Biopsychology 201860.csv"
@@ -199,7 +201,7 @@ We can examine student interactions with the course content at a finer level, an
 
 ### Social Psychology
 
-``` {r social_psych_usage}
+``` {r social_psych_usage, cache = TRUE}
 # Using the ACTIVITY_ACCUMULATOR data to examine item activity
 socUsage <- aaSoc18 %>%
   select(name, timestamp, content, role, forum_bool) %>%
@@ -238,10 +240,17 @@ socGameActPlot
 
 ```
 
-``` {r eval = T}
+``` {r eval = T, cahced = TRUE}
 # Looking at what was clicked prior to forum access
 
-socForumExamine <- aaSoc18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>% arrange(id, timestamp)
+socForumExamine <- aaSoc18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>%
+  mutate(content = str_replace_all(content, "Home", "_1 Home")) %>% 
+  mutate(content = str_replace_all(content, "How to use", "_2 How to use")) %>% 
+  mutate(content = str_replace_all(content, "Let us meet each other", "_3 Let us meet each other")) %>% 
+  mutate(content = str_replace_all(content, "Discussion Board", "_4 Discussion Board")) %>% 
+  mutate(content = str_replace_all(content, "/webapps", "app ")) %>%
+  
+  arrange(id, timestamp)
 r = length(socForumExamine$id)
 socForumAccess <- data.frame(from = socForumExamine[1:r - 1, "content"],
                              to = socForumExamine[2:r, "content"],
@@ -263,7 +272,7 @@ socForumAccessNodes <- socForumExamine %>%
   mutate(PageType = if_else(str_detect(content, "Week 2: The Social Self|Week 3:Perc|Week 4:Stereo|Week 5:Att|Week 6:Conf|Week 10:Att|Week 11:Help|Applied Social"), "Tutorial", 
                             if_else(forum_bool, "Forum", "Other"))) %>%
   mutate(PageType = if_else(is.na(PageType), "Other", PageType)) %>%
-  arrange(first_access)
+  arrange(content)
 
 socForumAccessGraph <- tbl_graph(nodes = socForumAccessNodes,
                                  edges = socForumAccessEdges,
@@ -287,7 +296,7 @@ socFAplot + ggtitle("Social Psychology Site Navigation")
 
 ### Biopsychology Activity
 
-``` {r biopsych_usage}
+``` {r biopsych_usage, cahced = TRUE}
 # Using the ACTIVITY_ACCUMULATOR data to examine item activity
 
 bioUsage <- aaBio18 %>%
@@ -350,10 +359,18 @@ bioGameActPlotFocus
 
 ```
 
-``` {r Biopsych_forum_access, eval = T}
+``` {r Biopsych_forum_access, eval = T, cahced = TRUE}
 # Looking at what was clicked prior to forum access
 
-bioForumExamine <- aaBio18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>% arrange(id, timestamp)
+bioForumExamine <- aaBio18 %>% 
+  filter(role == "S") %>% 
+  select(id, timestamp, content, forum_bool) %>% 
+  mutate(content = str_replace_all(content, "Home", "_1 Home")) %>% 
+  mutate(content = str_replace_all(content, "How to use the weekly study modules", "_2 How to use the weekly study modules")) %>% 
+  mutate(content = str_replace_all(content, "Meet your classmates on the social forum", "_3 Meet your classmates on the social forum")) %>% 
+  mutate(content = str_replace_all(content, "Discussion Board", "_4 Discussion Board")) %>% 
+  mutate(content = str_replace_all(content, "/webapps", "app ")) %>%
+  arrange(id, timestamp)
 r = length(bioForumExamine$id)
 bioForumAccess <- data.frame(from = bioForumExamine[1:r - 1, "content"],
                              to = bioForumExamine[2:r, "content"],
@@ -375,7 +392,7 @@ bioForumAccessNodes <- bioForumExamine %>%
   mutate(PageType = if_else(str_detect(content, "lab|Lab"), "Lab", 
                             if_else(forum_bool, "Forum", "Other"))) %>%
   mutate(PageType = if_else(is.na(PageType), "Other", PageType)) %>%
-  arrange(first_access)
+  arrange(content)
 
 bioForumAccessGraph <- tbl_graph(nodes = bioForumAccessNodes,
                                  edges = bioForumAccessEdges,
@@ -395,14 +412,33 @@ bioFAplot <- bioForumAccessGraph  %>% activate(nodes) %>% filter(!node_is_isolat
 bioFAplot + ggtitle("Biopsychology Site Navigation")
 ```
 
+``` {r biopsych_site_nav_vis, eval = F}
+library(visNetwork)
+
+visBioNodes <- bioForumAccessNodes %>% select(id = content, value = hits, group = PageType) %>% mutate(title = id)
+visBioEdges <- bioForumAccessEdges %>% select(from, to, value = weight)
+visNetwork(nodes = visBioNodes, edges = visBioEdges, main = "Biopsychology Site Navigation")
+
+visSocNodes <- socForumAccessNodes %>% select(id = content, value = hits, group = PageType) %>% mutate(title = id)
+visSocEdges <- socForumAccessEdges %>% select(from, to, value = weight)
+visNetwork(nodes = visSocNodes, edges = visSocEdges, main = "Social Psychology Site Navigation")
+```
+
 \newpage
 
 # Modelling
 
+## Cluster Analysis
+
+Clustering seemed to be most balanced using a *Euclidian* metric for distances (between individual points) and the *Ward D* method for clustering (distances between groups).
+
+
 ``` {r modelling_setup}
-suppressPackageStartupMessages(library(dendextend))
+suppressPackageStartupMessages(library(ggsci))
 make_normed_matrix <- function(df, return_ids = FALSE) {
   ids <- df$ID
+  df$median_time_per_access <- as.numeric(as_duration_from_string(df$median_time_per_access))
+  df$sd_time <- as.numeric(as_duration_from_string(df$sd_time))
   df <- as.data.frame(sapply(df %>% 
                          filter(Role == "S") %>% 
                          select(-ID, -Name, -Subject, -Role, -grade_quartile), 
@@ -421,34 +457,58 @@ nodeMatrixSoc <- make_normed_matrix(nodesSoc)
 nodes <- rbind(nodesBio, nodesSoc) %>% filter(Role == "S")
 nodeMatrix <- make_normed_matrix(nodes)
 
-jet.colors <-     colorRampPalette(c("#00007F", "blue", "#007FFF", "cyan",
-            "#7FFF7F", "yellow", "#FF7F00", "red", "#7F0000"))
-
-
-draw_dendrogram <- function(x, dist_metric = "euclidian", clust_k = 4) {
-  x <- make_normed_matrix(x)
-  hc <- hclust(dist(x, method = dist_metric))
+draw_dendrogram <- function(x, dist_metric = "euclidian", method = "ward.D",clust_k = 4) {
+  hc <- hclust(dist(x, method = dist_metric), method = method)
   dend <- as.dendrogram(hc)
   clusters <- cutree(hc, clust_k)
-  clist <- jet.colors(clust_k)
+  clist <- pal_lancet()(clust_k)
   dend %>%
     set("leaves_col", value = clist, k = clust_k) %>%
     set("labels", "none") %>%
     set("branches_k_color", value = clist, k = clust_k) %>%
-    plot(axes = FALSE, leaflab = "none", xlab = paste(dist_metric, "metric"))
+    plot(axes = FALSE, leaflab = "none", xlab = paste(dist_metric, "metric, Cluster method:", method))
+}
+
+draw_cluster_table <- function(x, dist_metric = "euclidian", method = "ward.D",clust_k = 4) {
+  hcAll <- hclust(dist(x, method = D_METRIC), method = METHOD)
+  clustersAll <- cutree(hcAll, clust_k)
+  nodes$clusterfull <- clustersAll
+  clusterAllSummary <- nodes %>% 
+  group_by(clusterfull) %>%
+  summarise(n = n(), 
+            Grade = mean(Grade), 
+            Accesses = mean(Accesses), 
+            clicks_pa = mean(mean_clicks_per_access),
+            sd_clicks = mean(sd_clicks), 
+            median_time_pa = as.duration(mean(median_time_per_access)), 
+            sd_time = as.duration(mean(sd_time)),
+            TotalTime = as.duration(mean(TotalTime)), 
+            ForumViews = mean(ForumViews)) %>% 
+  rename(cluster = clusterfull)
+  knitr::kable(clusterAllSummary)
 }
 
 # Analysis of both courses combined
 k_all <- 6
-draw_dendrogram(nodeMatrix, clust_k = k_all)
-hcAll <- hclust(dist(nodeMatrix, method = "canberra"))
-clustersAll <- cutree(hcAll, 6)
-nodes$clusterfull <- clustersAll
-clusterAllSummary <- nodes %>% 
-  group_by(clusterfull) %>%
-  summarise(n = n(), Grade = mean(Grade), Accesses = mean(Accesses), clicks_pa = mean(mean_clicks_per_access),
-            sd_clicks = mean(sd_clicks), median_time_pa = mean(median_time_per_access), sd_time = mean(sd_time),
-            TotalTime = mean(TotalTime), ForumViews = mean(ForumViews))
+k_no_grade <- 4
+D_METRIC <- "euclidian"
+METHOD <- "ward.D"
+```
+
+### CLustering using grades
+
+``` {r cluster_all_present}
+draw_dendrogram(nodeMatrix, clust_k = k_all, dist_metric = D_METRIC, method = METHOD)
+draw_cluster_table(nodeMatrix, clust_k = k_all, dist_metric = D_METRIC, method = METHOD)
+```
+
+
+### Clustering using no grades - only behaviour
+
+``` {r cluster_no_grade}
+# Clustering without grade data
+draw_dendrogram(nodeMatrix[ , 2:8], clust_k = k_no_grade, dist_metric = D_METRIC, method = METHOD)
+draw_cluster_table(nodeMatrix[ , 2:8], clust_k = k_no_grade, dist_metric = D_METRIC, method = METHOD)
 ```
 
 \newpage
