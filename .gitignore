@@ -10,3 +10,4 @@ vignettes/*.png
 vignettes/*.html
 .Rproj.user
 *.jpg
+*.gif

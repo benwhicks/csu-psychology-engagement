@@ -4,7 +4,7 @@ author: "Ben Hicks"
 output: html_document
 ---
 
-The following data is from the Social Psychology (PSY203 and PSY453) and Biopsychology (PSY208 and PSY408) subjects run in 2018 Session 2. The aim of this report is to look at student engagement in these courses through the data available in Blackboard Learn. 
+The following data is from the Social Psychology (PSY203 and PSY453) and Biopsychology (PSY208 and PSY408) subjects run in 2017 Session 2. The aim of this report is to look at student engagement in these courses through the data available in Blackboard Learn. 
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = F, message = F, warning = F)
@@ -23,12 +23,12 @@ suppressPackageStartupMessages(library(dendextend))
 ``` {r importing, cache=TRUE}
 source(file.path('R','psych_functions.R'))
 DATDIR <- file.path("~", "Data", "Psychology")
-BIOAAFILE <- "aa Biopsychology 201860.csv"
-SOCAAFILE <- "aa Social Psychology 201860.csv"
-MARKSFILE <- "marks Psychology 201860.csv"
-BIOCCFILE <- "cc Biopsychology 201860.csv"
-SOCCCFILE <- "cc Social Psychology 201860.csv"
-POSTSFILE <- "posts Psychology 201860.csv"
+BIOAAFILE <- "aa Biopsychology 201760.csv"
+SOCAAFILE <- "aa Social Psychology 201760.csv"
+MARKSFILE <- "marks Psychology 201760.csv"
+BIOCCFILE <- "cc Biopsychology 201760.csv"
+SOCCCFILE <- "cc Social Psychology 201760.csv"
+POSTSFILE <- "posts Psychology 201760.csv"
 
 snData <- read_csv(file.path(DATDIR, POSTSFILE), col_types = "cccffn")
 # Activity Accumulator Data --------------------------------------
@@ -42,23 +42,23 @@ tidy_aa <- function(df) {
   df <- df %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
   return(df)
 } # --------------------------------------------------------------
-aaSoc18 <- read_csv(file.path(DATDIR, SOCAAFILE), col_types = "ffTcccccffcccf") # can cause performance hit, if so do not specity columns and add as.factor lines to tidy_aa 
-aaSoc18 <- tidy_aa(aaSoc18)
+aaSoc17 <- read_csv(file.path(DATDIR, SOCAAFILE), col_types = "ffTcccccffcccf") # can cause performance hit, if so do not specity columns and add as.factor lines to tidy_aa 
+aaSoc17 <- tidy_aa(aaSoc17)
 
-aaBio18 <- read_csv(file.path(DATDIR, BIOAAFILE), col_types = "ffTcccccffcccf")
-aaBio18 <- tidy_aa(aaBio18)
+aaBio17 <- read_csv(file.path(DATDIR, BIOAAFILE), col_types = "ffTcccccffcccf")
+aaBio17 <- tidy_aa(aaBio17)
 
 # Node preparation (i.e. data for each student)
 
 # Mark data
-marks18 <- read_csv(file.path(DATDIR, MARKSFILE)) %>%
+marks17 <- read_csv(file.path(DATDIR, MARKSFILE)) %>%
   mutate(mark = score / possible, id = factor(id)) 
-marksSummary18 <- marks18 %>% 
+marksSummary17 <- marks17 %>% 
   group_by(subject_name, student, id) %>%
   summarise(avg_grade = mean(mark, na.rm = T)) %>%
   rename(name = student, subject = subject_name)
-marksSoc18 <- marksSummary18 %>% filter(subject == "Social Psychology")
-marksBio18 <- marksSummary18 %>% filter(subject == "Biopsychology")
+marksSoc17 <- marksSummary17 %>% filter(subject == "Social Psychology")
+marksBio17 <- marksSummary17 %>% filter(subject == "Biopsychology")
 
 # Discussion views from aa -------------------------------------------
 discussion_views <- function(df) {
@@ -72,14 +72,14 @@ discussion_views <- function(df) {
     group_by(name) %>%
     summarise(ForumViews = sum(ForumViews))
 } # ------------------------------------------------------------------
-discussionViewsBio <- discussion_views(aaBio18)
-discussionViewsSoc <- discussion_views(aaSoc18)
+discussionViewsBio <- discussion_views(aaBio17)
+discussionViewsSoc <- discussion_views(aaSoc17)
 
 # Other interaction data from aa
-aaSummaryBio <- aa_summary_by_user(aaBio18)
-aaSummaryBio <- merge(aaSummaryBio, unique(aaBio18 %>% select(id, name)))
-aaSummarySoc <- aa_summary_by_user(aaSoc18)
-aaSummarySoc <- merge(aaSummarySoc, unique(aaSoc18 %>% select(id, name)))
+aaSummaryBio <- aa_summary_by_user(aaBio17)
+aaSummaryBio <- merge(aaSummaryBio, unique(aaBio17 %>% select(id, name)))
+aaSummarySoc <- aa_summary_by_user(aaSoc17)
+aaSummarySoc <- merge(aaSummarySoc, unique(aaSoc17 %>% select(id, name)))
 
 
 # Node assembly ----------------------------------------------------------
@@ -106,8 +106,8 @@ node_merge_and_make <- function(aaData, marksData, discussionsData) {
   df$Role <- "S"
   return(df)
 } # ----------------------------------------------------------------------
-nodesBio <- node_merge_and_make(aaSummaryBio, marksBio18, discussionViewsBio)
-nodesSoc <- node_merge_and_make(aaSummarySoc, marksSoc18, discussionViewsSoc)
+nodesBio <- node_merge_and_make(aaSummaryBio, marksBio17, discussionViewsBio)
+nodesSoc <- node_merge_and_make(aaSummarySoc, marksSoc17, discussionViewsSoc)
 
 # -----------------------------------------------------------------------------
 subject_code_to_name <- function(x) {
@@ -115,7 +115,7 @@ subject_code_to_name <- function(x) {
 } # ---------------------------------------------------------------------------
 
 ## ADD ##
-allStudentIDs <- unique(marks18$id)
+allStudentIDs <- unique(marks17$id)
 allForumIDs <- unique(snData$msgfrom)
 teacherIDs <- setdiff(allForumIDs, allStudentIDs)
 teacherNodes <- snData %>% 
@@ -156,43 +156,6 @@ networkSoc <- tbl_graph(nodes = nodesSoc, edges = edgesSoc)
 # Activity
 
 
-``` {r timelines, eval = F}
-## Timeline Averages
-timelineData <- timelineDataRaw %>% mutate(subject = substr(`subject code`, 3, 8),
-                                           session = as.factor(substr(`subject code`, 10, 15)))
-timeSum <- timelineData[timelineData$subject != "PSY458",] %>% 
-  group_by(week, measure, subject, session) %>%
-  summarise(score = sum(score, na.rm = T))
-
-# collecting together different campuses and ommitting some data
-nonDiscussion <- c("Avg Site Accesses by Week of Term","Avg Interactions per Week","Avg Minutes per Site Access","Avg Minutes by Day")
-timeSumShort <- timelineData[timelineData$subject != "PSY458" &
-                              timelineData$measure %in% nonDiscussion,] %>% 
-  group_by(week, measure, subject, session) %>%
-  summarise(score = sum(score, na.rm = T))
-timePlot <- ggplot(timeSumShort, aes(x = week, y = score, color = session)) +
-  geom_line() +
-  facet_grid(measure ~ subject, scales = "free") +
-  theme_tufte() +
-  theme(strip.text.y = element_text(size = 8, angle = 0),
-        axis.label.y = NULL) +
-  scale_color_brewer(palette = "Paired")
-timePlot + ggtitle("Average Course Activity by Week of Course")
-
-# t-testing 1st and 3rd graphs for PSY203
-t1int <- timeSumShort[timeSumShort$measure == "Avg Interactions per Week" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201760",]$score
-t2int <- timeSumShort[timeSumShort$measure == "Avg Interactions per Week" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201860",]$score
-t1Min <- timeSumShort[timeSumShort$measure == "Avg Minutes per Site Access" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201760",]$score
-t2Min <- timeSumShort[timeSumShort$measure == "Avg Minutes per Site Access" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201860",]$score
-
-ttestInt <- t.test(t2int, t1int, paired = T)
-ttestMin <- t.test(t2Min, t1Min, paired = T)
-
-# Old text below:
-# The most significant difference between sessions of the results above is for Social Psychology (PSY203) on the *Average Interactions per Week* and *Avg Minutes per Site Access* metrics. The interactions show an increase of between `r round(ttestInt$conf.int[[1]],2)` and `r round(ttestInt$conf.int[[2]], 2)` (95% confidence, paired t-test), and a similar test on the minutes per site access shows an increase of between `r round(ttestMin$conf.int[[1]],2)` and `r round(ttestMin$conf.int[[2]], 2)`. For the latter, it is worth flagging that mean duration on site can be thrown by students leaving the browser open - median would be a better measure here.
-```
-
-
 
 ## Item Activity
 
@@ -203,9 +166,9 @@ We can examine student interactions with the course content at a finer level, an
 
 ``` {r social_psych_usage, cache = TRUE}
 # Using the ACTIVITY_ACCUMULATOR data to examine item activity
-socUsage <- aaSoc18 %>%
+socUsage <- aaSoc17 %>%
   select(name, timestamp, content, role, forum_bool) %>%
-  filter(role == "S" & timestamp < as.Date('2018-11-01')) %>%
+  filter(role == "S" & timestamp < as.Date('2017-11-01')) %>%
   mutate(Activity = if_else(
     str_detect(content, "Week 2: The Social Self|Week 3:Perc|Week 4:Stereo|Week 5:Att|Week 6:Conf|Week 10:Att|Week 11:Help|Applied Social"), 
     "Tutorial",
@@ -213,7 +176,7 @@ socUsage <- aaSoc18 %>%
     )
     )%>%
   mutate(Activity = if_else(is.na(Activity), "Other", Activity)) %>%
-  rename(Name = name) %>% 
+  plyr::rename(replace = c("name" = "Name")) %>% # ERROR IN THIS NEXT LINE, JOIN NOT RECOGNISING AND RETURNING NA
   left_join(nodesSoc %>% 
           select(Name, Accesses, TotalTime, grade_quartile, ForumViews) %>% 
           unique(), by = c("Name"))
@@ -243,7 +206,7 @@ socGameActPlot
 ``` {r eval = T, cahced = TRUE}
 # Looking at what was clicked prior to forum access
 
-socForumExamine <- aaSoc18 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>%
+socForumExamine <- aaSoc17 %>% filter(role == "S") %>% select(id, timestamp, content, forum_bool) %>%
   mutate(content = str_replace_all(content, "Home", "_1 Home")) %>% 
   mutate(content = str_replace_all(content, "How to use", "_2 How to use")) %>% 
   mutate(content = str_replace_all(content, "Let us meet each other", "_3 Let us meet each other")) %>% 
@@ -299,15 +262,15 @@ socFAplot + ggtitle("Social Psychology Site Navigation")
 ``` {r biopsych_usage, cahced = TRUE}
 # Using the ACTIVITY_ACCUMULATOR data to examine item activity
 
-bioUsage <- aaBio18 %>%
+bioUsage <- aaBio17 %>%
   select(name, timestamp, content, role, forum_bool) %>%
   filter(role == "S" ) %>%
-  #& timestamp < as.Date('2018-11-01')) %>%
+  #& timestamp < as.Date('2017-11-01')) %>%
   mutate(Activity = if_else(str_detect(tolower(content), "game"), "Game",
                                    if_else(str_detect(tolower(content), "in the lab"), "In the lab",
                                            if_else(forum_bool, "Forum", "Other")))) %>%
   mutate(Activity = if_else(is.na(Activity), "Other", Activity)) %>%
-  rename(Name = name) %>%
+  plyr::rename(replace = c("name" = "Name")) %>%
   merge(nodesBio %>% select(Name, Accesses, grade_quartile, ForumViews, 
                             mean_clicks_per_access, sd_clicks, median_time_per_access, sd_time, TotalTime), all.x = T)
 
@@ -333,7 +296,7 @@ bioUsage %>% group_by(Activity) %>% tally() %>% knitr::kable()
 
 bioGameActPlot
 
-bioGameActPlotFocus <- bioUsage %>% filter(timestamp < as.Date('2018-10-15')) %>%
+bioGameActPlotFocus <- bioUsage %>% filter(timestamp < as.Date('2017-10-15')) %>%
   ggplot(aes(x = timestamp, y = grade_quartile, color = ForumViews)) +
   scale_color_gradient2(name = "Forum Participation", 
                          low = "Black",
@@ -362,7 +325,7 @@ bioGameActPlotFocus
 ``` {r Biopsych_forum_access, eval = T, cahced = TRUE}
 # Looking at what was clicked prior to forum access
 
-bioForumExamine <- aaBio18 %>% 
+bioForumExamine <- aaBio17 %>% 
   filter(role == "S") %>% 
   select(id, timestamp, content, forum_bool) %>% 
   mutate(content = str_replace_all(content, "Home", "_1 Home")) %>% 
@@ -546,7 +509,7 @@ cluster_df <- append_clusters(nodes, k_means = 6)
 
 bioStampsAndClusters <- inner_join(cluster_df%>% 
                                      select(name = Name, cluster),
-                                aaBio18 %>% 
+                                aaBio17 %>% 
                                   select(name, timestamp, session))
 
 c1sample <- sample(bioStampsAndClusters[bioStampsAndClusters$cluster == 1,]$name, 5)
