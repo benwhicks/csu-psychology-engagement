@@ -12,7 +12,7 @@ aa_full <- read_csv(file.path(DATDIR, BIOAAFILE))
 cc_full <- read_csv(file.path(DATDIR, BIOCCFILE)) 
 
 aa <- aa_full %>% 
-  filter(role == 'S', !is.na(content_pk1)) %>% 
+  filter(role == 'S', !is.na(content_pk1), timestamp < as.POSIXct('2018-10-30')) %>% 
   select(id, time = timestamp, content_pk1, session = session_id) %>% 
   mutate(id = factor(id), content_pk1 = factor(content_pk1)) %>% 
   arrange(id, time)
@@ -38,7 +38,7 @@ aa_edges <- aa_edges %>%
 cc_edges <- cc %>% 
   select(from = parent_pk1, to = pk1) %>% 
   filter(!is.na(from)) %>% 
-  mutate(weight = 1, time = as.POSIXct('2018-03-01')) # used manual set time - needs to be well before other data
+  mutate(weight = 1, time = as.POSIXct('2018-05-01')) # used manual set time - needs to be well before other data
 
 # creating node lists
 cc_nodes <- cc %>% select(id = pk1, title)
@@ -49,22 +49,40 @@ cc_layout <- create_layout(cc_graph, layout = "nicely")
 np <- data.frame(x = cc_layout$x, y = cc_layout$y)
 
 aa_graph <- tbl_graph(nodes = cc_nodes, edges = aa_edges)
-aa_sg <- aa_graph %>% activate(edges) %>% filter(student == sample(student, 1))
+aa_sg <- aa_graph %>% activate(edges) %>% 
+  filter(student %in% sample(student, 3))
 
 joined_graph <- cc_graph %>% graph_join(aa_sg) 
-
+joined_graph <- joined_graph %>% 
+  activate(edges) %>% 
+  mutate(student = if_else(is.na(student), "_course structure", as.character(student)))
 
 g <- ggraph(joined_graph, layout = "manual", node.positions = np) + 
   geom_node_point() + 
-  geom_edge_link0(aes(color = as.numeric(time), width = weight, group = time, linetype = student), alpha = 0.2, show.legend = FALSE) +
-  geom_edge_fan(aes(alpha = 2 - weight), color = 'black', spread = 0) + # not sure if this will work
-  scale_edge_width(range = c(0.7,1)) +
-  scale_edge_color_continuous(low = "black", high = "turquoise")+
+  geom_edge_link0(aes(color = as.numeric(time), 
+                      width = weight, 
+                      alpha = 2 - weight,
+                      group = time)
+                  #, show.legend = FALSE
+                  ) +
+  scale_edge_alpha_continuous(range = c(0.1, 1)) +
+  scale_edge_width(range = c(0.6,1)) +
+  scale_edge_color_gradientn(colors = c("black", "#47ADED", "#D81C41")) +
   theme_graph() +
-  transition_time(time) +
-  shadow_mark(1, colour = "black")
+  theme(legend.position = "none",
+        text = element_text(family = "TT Times New Roman"))
+
 g
 
+g_facet <- g +
+  facet_edges(~ student)
+g_facet
+
+g_animate <- g +
+  transition_time(time) +
+  shadow_mark(1, colour = "black") +
+  labs(title = '{frame_time}')
+g_animate
 
 # previously only the manual version was working
 p <- ggraph(joined_graph, layout = "manual", node.positions = np) + 
