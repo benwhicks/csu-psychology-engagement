@@ -7,7 +7,7 @@ output: html_document
 The following data is from the Social Psychology (PSY203 and PSY453) and Biopsychology (PSY208 and PSY408) subjects run in 2018 Session 2. The aim of this report is to look at student engagement in these courses through the data available in Blackboard Learn. 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = F, message = F, warning = F, cache = T)
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
 #knitr::opts_chunk$set(dev = 'png') - - uncomment to reduce file size
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(lubridate))

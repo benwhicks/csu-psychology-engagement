@@ -11,3 +11,6 @@ vignettes/*.html
 .Rproj.user
 *.jpg
 *.gif
+*.Rdata
+*.rdb
+*.rdx

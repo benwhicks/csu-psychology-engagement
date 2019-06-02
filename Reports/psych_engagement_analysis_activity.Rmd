@@ -7,7 +7,7 @@ output: html_document
 The following data is from the Social Psychology (PSY203 and PSY453) and Biopsychology (PSY208 and PSY408) subjects run in 2018 Session 2. The aim of this report is to look at student engagement in these courses through the data available in Blackboard Learn. 
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = F, message = F, warning = F, cache = T)
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
 #knitr::opts_chunk$set(dev = 'png') - - uncomment to reduce file size
 suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(lubridate))
@@ -213,95 +213,9 @@ aaSoc18 <- left_join(aaSoc18, nodeInfo)
 # Making graph structures
 networkBio <- tbl_graph(nodes = nodesBio, edges = edgesBio) 
 networkSoc <- tbl_graph(nodes = nodesSoc, edges = edgesSoc)
-
 ```
 
-# Activity
-
-
-``` {r timelines, eval = F}
-## Timeline Averages
-timelineData <- timelineDataRaw %>% mutate(subject = substr(`subject code`, 3, 8),
-                                           session = as.factor(substr(`subject code`, 10, 15)))
-timeSum <- timelineData[timelineData$subject != "PSY458",] %>% 
-  group_by(week, measure, subject, session) %>%
-  summarise(score = sum(score, na.rm = T))
-
-# collecting together different campuses and ommitting some data
-nonDiscussion <- c("Avg Site Accesses by Week of Term","Avg Interactions per Week","Avg Minutes per Site Access","Avg Minutes by Day")
-timeSumShort <- timelineData[timelineData$subject != "PSY458" &
-                              timelineData$measure %in% nonDiscussion,] %>% 
-  group_by(week, measure, subject, session) %>%
-  summarise(score = sum(score, na.rm = T))
-timePlot <- ggplot(timeSumShort, aes(x = week, y = score, color = session)) +
-  geom_line() +
-  facet_grid(measure ~ subject, scales = "free") +
-  theme_tufte() +
-  theme(strip.text.y = element_text(size = 8, angle = 0),
-        axis.label.y = NULL) +
-  scale_color_brewer(palette = "Paired")
-timePlot + ggtitle("Average Course Activity by Week of Course")
-
-# t-testing 1st and 3rd graphs for PSY203
-t1int <- timeSumShort[timeSumShort$measure == "Avg Interactions per Week" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201760",]$score
-t2int <- timeSumShort[timeSumShort$measure == "Avg Interactions per Week" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201860",]$score
-t1Min <- timeSumShort[timeSumShort$measure == "Avg Minutes per Site Access" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201760",]$score
-t2Min <- timeSumShort[timeSumShort$measure == "Avg Minutes per Site Access" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201860",]$score
-
-ttestInt <- t.test(t2int, t1int, paired = T)
-ttestMin <- t.test(t2Min, t1Min, paired = T)
-
-# Old text below:
-# The most significant difference between sessions of the results above is for Social Psychology (PSY203) on the *Average Interactions per Week* and *Avg Minutes per Site Access* metrics. The interactions show an increase of between `r round(ttestInt$conf.int[[1]],2)` and `r round(ttestInt$conf.int[[2]], 2)` (95% confidence, paired t-test), and a similar test on the minutes per site access shows an increase of between `r round(ttestMin$conf.int[[1]],2)` and `r round(ttestMin$conf.int[[2]], 2)`. For the latter, it is worth flagging that mean duration on site can be thrown by students leaving the browser open - median would be a better measure here.
-```
-
-
-## Item Activity
-
-We can examine student interactions with the course content at a finer level, and filter according to activities of note.
-
-### Social Psychology
-
-``` {r social_psych_usage, cache = TRUE}
-# Using the ACTIVITY_ACCUMULATOR data to examine item activity
-socUsage <- aaSoc18 %>%
-  select(name, timestamp, content, role, forum_bool) %>%
-  filter(role == "S" & timestamp < as.Date('2018-11-01')) %>%
-  mutate(Activity = if_else(
-    str_detect(content, "Week 2: The Social Self|Week 3:Perc|Week 4:Stereo|Week 5:Att|Week 6:Conf|Week 10:Att|Week 11:Help|Applied Social"), 
-    "Tutorial",
-    if_else(forum_bool, "Forum", "Other")
-    )
-    )%>%
-  mutate(Activity = if_else(is.na(Activity), "Other", Activity)) %>%
-  rename(Name = name) %>% 
-  left_join(nodesSoc %>% 
-          select(Name, Accesses, TotalTime, grade_quartile, ForumViews) %>% 
-          unique(), by = c("Name"))
-
-socGameActPlot <- socUsage %>% 
-  ggplot(aes(x = timestamp, y = grade_quartile, color = ForumViews)) +
-  scale_color_gradient2(name = "Forum Participation", 
-                         low = "Black",
-                          mid = "Dark Blue",
-                         high = "Red",
-                         midpoint = 3.5,
-                         trans = "log1p",
-                         breaks = c(2, 10, 50, 250, 1250)) +  
-  geom_jitter(alpha = 0.01) +
-  scale_y_continuous(name = "Grade Quartile") +
-  ggthemes::theme_tufte() + 
-  theme(axis.title.x = element_blank()) + 
-  facet_grid(Activity ~ .) +
-  ggtitle("Usage of items in Social Psychology")
-
-socUsage %>% group_by(Activity) %>% tally() %>% knitr::kable()
-
-socGameActPlot
-
-```
-
-``` {r site_nav_functions, eval = T}
+``` {r site_nav_functions}
 # Looking at how students navigated the course
 edges_from_aa <- function(x) {
   aa <- x %>% 
@@ -377,7 +291,6 @@ build_site_activity_graph_list <- function(cc_nodes, cc_edges, aa_nodes, aa_edge
   return(list(joined_graph, np))
 }
 
-
 draw_site_graph <- function(graph_list){
   graph <- graph_list[[1]] %>% 
     activate(edges) %>% 
@@ -410,9 +323,95 @@ draw_site_activity_graph <- function(graph_list, alpha_low = 0.1) {
 }
 ```
 
+# Activity
+
+
+``` {r timelines, eval = F}
+## Timeline Averages
+timelineData <- timelineDataRaw %>% mutate(subject = substr(`subject code`, 3, 8),
+                                           session = as.factor(substr(`subject code`, 10, 15)))
+timeSum <- timelineData[timelineData$subject != "PSY458",] %>% 
+  group_by(week, measure, subject, session) %>%
+  summarise(score = sum(score, na.rm = T))
+
+# collecting together different campuses and ommitting some data
+nonDiscussion <- c("Avg Site Accesses by Week of Term","Avg Interactions per Week","Avg Minutes per Site Access","Avg Minutes by Day")
+timeSumShort <- timelineData[timelineData$subject != "PSY458" &
+                              timelineData$measure %in% nonDiscussion,] %>% 
+  group_by(week, measure, subject, session) %>%
+  summarise(score = sum(score, na.rm = T))
+timePlot <- ggplot(timeSumShort, aes(x = week, y = score, color = session)) +
+  geom_line() +
+  facet_grid(measure ~ subject, scales = "free") +
+  theme_tufte() +
+  theme(strip.text.y = element_text(size = 8, angle = 0),
+        axis.label.y = NULL) +
+  scale_color_brewer(palette = "Paired")
+timePlot + ggtitle("Average Course Activity by Week of Course")
+
+# t-testing 1st and 3rd graphs for PSY203
+t1int <- timeSumShort[timeSumShort$measure == "Avg Interactions per Week" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201760",]$score
+t2int <- timeSumShort[timeSumShort$measure == "Avg Interactions per Week" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201860",]$score
+t1Min <- timeSumShort[timeSumShort$measure == "Avg Minutes per Site Access" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201760",]$score
+t2Min <- timeSumShort[timeSumShort$measure == "Avg Minutes per Site Access" & timeSumShort$subject == "PSY203" & timeSumShort$session == "201860",]$score
+
+ttestInt <- t.test(t2int, t1int, paired = T)
+ttestMin <- t.test(t2Min, t1Min, paired = T)
+
+# Old text below:
+# The most significant difference between sessions of the results above is for Social Psychology (PSY203) on the *Average Interactions per Week* and *Avg Minutes per Site Access* metrics. The interactions show an increase of between `r round(ttestInt$conf.int[[1]],2)` and `r round(ttestInt$conf.int[[2]], 2)` (95% confidence, paired t-test), and a similar test on the minutes per site access shows an increase of between `r round(ttestMin$conf.int[[1]],2)` and `r round(ttestMin$conf.int[[2]], 2)`. For the latter, it is worth flagging that mean duration on site can be thrown by students leaving the browser open - median would be a better measure here.
+```
+
+
+## Item Activity
+
+We can examine student interactions with the course content at a finer level, and filter according to activities of note.
+
+### Social Psychology
+
+``` {r social_psych_usage, cache = TRUE, dependson = "importing"}
+# Using the ACTIVITY_ACCUMULATOR data to examine item activity
+socUsage <- aaSoc18 %>%
+  select(name, timestamp, content, role, forum_bool) %>%
+  filter(role == "S" & timestamp < as.Date('2018-11-01')) %>%
+  mutate(Activity = if_else(
+    str_detect(content, "Week 2: The Social Self|Week 3:Perc|Week 4:Stereo|Week 5:Att|Week 6:Conf|Week 10:Att|Week 11:Help|Applied Social"), 
+    "Tutorial",
+    if_else(forum_bool, "Forum", "Other")
+    )
+    )%>%
+  mutate(Activity = if_else(is.na(Activity), "Other", Activity)) %>%
+  rename(Name = name) %>% 
+  left_join(nodesSoc %>% 
+          select(Name, Accesses, TotalTime, grade_quartile, ForumViews) %>% 
+          unique(), by = c("Name"))
+
+socGameActPlot <- socUsage %>% 
+  ggplot(aes(x = timestamp, y = grade_quartile, color = ForumViews)) +
+  scale_color_gradient2(name = "Forum Participation", 
+                         low = "Black",
+                          mid = "Dark Blue",
+                         high = "Red",
+                         midpoint = 3.5,
+                         trans = "log1p",
+                         breaks = c(2, 10, 50, 250, 1250)) +  
+  geom_jitter(alpha = 0.01) +
+  scale_y_continuous(name = "Grade Quartile") +
+  ggthemes::theme_tufte() + 
+  theme(axis.title.x = element_blank()) + 
+  facet_grid(Activity ~ .) +
+  ggtitle("Usage of items in Social Psychology")
+
+socUsage %>% group_by(Activity) %>% tally() %>% knitr::kable()
+
+socGameActPlot
+
+```
+
+
 #### Site structure and activity
 
-``` {r soc_site, cache = T}
+``` {r soc_site, cache = T, dependson = "importing"}
 socSiteGraphList <- build_site_activity_graph_list(
   cc_nodes = nodes_from_cc(ccSoc18, subject = "Soc"),
   cc_edges = edges_from_cc(ccSoc18),
@@ -422,15 +421,24 @@ socSiteGraphList <- build_site_activity_graph_list(
 draw_site_graph(socSiteGraphList) + ggtitle("Social Psychology site structure")
 ```
 
-``` {r soc_site_nav, cache = TRUE}
-draw_site_activity_graph(socSiteGraphList, alpha_low = 0.002) + ggtitle("Social Psychology activity")
+``` {r soc_site_nav, cache = TRUE, dependson = "soc_site"}
+gsocsa <- draw_site_activity_graph(socSiteGraphList, alpha_low = 0.002) + ggtitle("Social Psychology activity")
+gsocsa
+
+# use above opject for animation
+# g_animate <- g +
+#   transition_time(time) +
+#   shadow_mark(1, colour = "black") +
+#   labs(title = '{frame_time}')
+# g_animate
+
 ```
 
 \newpage
 
 ### Biopsychology Activity
 
-``` {r biopsych_usage, cache = TRUE}
+``` {r biopsych_usage, cache = TRUE, dependson = "importing"}
 # Using the ACTIVITY_ACCUMULATOR data to examine item activity
 
 bioUsage <- aaBio18 %>%
@@ -498,10 +506,10 @@ bioSiteGraphList <- build_site_activity_graph_list(
   aa_edges = edges_from_aa(aaBio18))
 ```
 
-``` {r bio_site, cache = T, eval = T}
+``` {r bio_site, cache = T, eval = T, dependson = "bio_site_structure"}
 draw_site_graph(bioSiteGraphList) + ggtitle("Biopsychology site structure")
 ```
 
-``` {r bio_site_nav, cache = T, eval = T}
+``` {r bio_site_nav, cache = T, eval = T, dependson = "bio_site_structure"}
 draw_site_activity_graph(bioSiteGraphList, alpha_low = 0.002) + ggtitle("Biopsychology activity")
 ```
