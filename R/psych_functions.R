@@ -115,6 +115,17 @@ buildClusterGraph <- function(graph) {
   return(g)
 }
 
+buildClusterKMetGraph <- function(graph) {
+  g <- ggraph(to_undirected(graph), 
+              layout = "kk") +
+    geom_edge_link(aes(alpha = weight), show.legend = F) +
+    geom_node_point(aes(size = grade_quartile, color = factor(cluster)), show.legend = T) +
+    scale_size_continuous(name = "Grade Quartile", trans = "exp") +
+    ggthemes::theme_tufte() + 
+    theme(axis.line = element_blank(), axis.title = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
+  return(g)
+}
+
 
 tlttest <- function(t = timeSum, measure, subject) {
   t2 <- t[t$subject == subject & t$measure == measure & t$session == "201860", ]$score
