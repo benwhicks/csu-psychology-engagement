@@ -9,8 +9,8 @@ tlttest <- function(t = timeSum, measure, subject) {
 edges_from_aa <- function(x) {
   aa <- x %>% 
     filter(role == 'S', !is.na(content_pk1), timestamp < as.POSIXct('2018-10-30')) %>% 
-    select(id, time = timestamp, content_pk1, session, 
-           grade_quartile, cluster, qual) %>% 
+    select(id, time = timestamp, content_pk1, session) %>%  
+           #grade_quartile, cluster, qual) %>% 
     mutate(id = factor(id), content_pk1 = factor(content_pk1)) %>% 
     arrange(id, time)
   aa_edges <- tibble(from = aa$content_pk1[1:(nrow(aa) - 1)],
@@ -19,13 +19,13 @@ edges_from_aa <- function(x) {
                      student_from = aa$id[1:(nrow(aa) - 1)],
                      student = aa$id[2:nrow(aa)],
                      session_from = aa$session[1:(nrow(aa) - 1)],
-                     session = aa$session[2:nrow(aa)],
-                     grade_quartile = aa$grade_quartile[1:(nrow(aa) - 1)],
-                     cluster = aa$cluster[1:(nrow(aa) - 1)],
-                     qual = aa$qual[1:(nrow(aa) - 1)])
+                     session = aa$session[2:nrow(aa)])
+                     #grade_quartile = aa$grade_quartile[1:(nrow(aa) - 1)],
+                     #cluster = aa$cluster[1:(nrow(aa) - 1)],
+                     #qual = aa$qual[1:(nrow(aa) - 1)]
   aa_edges <- aa_edges %>% 
     filter(student == student_from, session == session_from) %>% 
-    select(from, to, time, student, grade_quartile, cluster, qual) %>% 
+    select(from, to, time, student) %>% # , grade_quartile, cluster, qual 
     mutate(weight = 2)
   return(aa_edges)
 }
@@ -63,8 +63,9 @@ nodes_from_cc <- function(x, subject) {
 nodes_from_aa <- function(x) {
   x %>% 
     filter(!is.na(content_pk1)) %>% 
-    left_join(nodes %>% select(id = ID, ))
-  select(id = content_pk1, cluster, qual) %>% # might need to calc grade quartile
+    left_join(nodes %>% select(id = ID, cluster, qual)) %>% 
+    select(-id) %>% 
+    select(id = content_pk1, cluster, qual) %>% # might need to calc grade quartile
     unique()
 }
 

@@ -1,0 +1,177 @@
+---
+title: "Single Student Profile"
+author: Ben Hicks
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F, warning = F)
+#knitr::opts_chunk$set(dev = 'png') - - uncomment to reduce file size
+
+# Package loading to be included in student-profile-render script
+
+knitr::knit_hooks$set(webgl = hook_webgl)
+library(knitr)
+```
+
+
+``` {r importing}
+#source(file.path('..','R','psych_functions.R'))
+#source(file.path('..', 'R', 'import-data.R'))
+```
+
+``` {r selecting_student}
+s <- student
+
+aabio <- aaBio18 %>% filter(Student == s)
+aasoc <- aaSoc18 %>% filter(Student == s)
+
+n <- nodes %>% filter(Student == s) %>% 
+  select(Student, Subject, `Grade Quartile` = grade_quartile, Cluster = cluster, 
+         Accesses, `Clicks pa` = mean_clicks_per_access, sd_clicks, 
+         `Time pa` = median_time_per_access, sd_time, 
+        `Total Time`  = TotalTime, `Forum Views` = ForumViews, `Qual group` = qual)
+```
+
+# Profile for `r s`
+
+``` {r}
+kable(n, digits = 3)
+```
+
+The 'pa' above is per access. Clicks are averaged using the mean and time is averaged using median.
+
+## Item activity timeline
+
+``` {r}
+if (dim(aasoc)[1] > 0) {
+  socUsage <- aasoc %>%
+    select(timestamp, content, role, forum_bool) %>%
+    filter(role == "S" & timestamp < as.Date('2018-11-01')) %>%
+    mutate(Activity = if_else(
+      str_detect(content, "Week 2: The Social Self|Week 3:Perc|Week 4:Stereo|Week 5:Att|Week 6:Conf|Week 10:Att|Week 11:Help|Applied Social"), 
+      "Tutorial",
+      if_else(forum_bool, "Forum", "Other")
+    )
+    )%>%
+    mutate(Activity = if_else(is.na(Activity), "Other", Activity))
+  
+  socActPlotStudent <- socUsage %>% 
+   ggplot(aes(x = timestamp, y = Activity)) +
+    geom_point(alpha = 0.05, size = 7, width = 0, height = 0.1) +
+    ggthemes::theme_tufte() + 
+    theme(axis.title.x = element_blank()) +
+    ggtitle("Usage of items in Social Psychology")
+  
+  socActPlotStudent
+}
+
+if (dim(aabio)[1] > 0) {
+  bioUsage <- aabio %>%
+    select(timestamp, content, role, forum_bool) %>%
+    filter(role == "S" & timestamp < as.Date('2018-11-01')) %>%
+     mutate(Activity = if_else(str_detect(tolower(content), "game"), "Game",
+                                   if_else(str_detect(tolower(content), "in the lab"), "In the lab",
+                                           if_else(forum_bool, "Forum", "Other")))) %>%
+  mutate(Activity = if_else(is.na(Activity), "Other", Activity)) 
+  
+  bioActPlotStudent <- bioUsage %>% 
+    ggplot(aes(x = timestamp, y = Activity)) +
+    geom_jitter(alpha = 0.05, size = 7, width = 0, height = 0.1) +
+    ggthemes::theme_tufte() + 
+    theme(axis.title.x = element_blank()) +
+    ggtitle("Usage of items in Biopsychology")
+  
+  bioActPlotStudent
+} 
+```
+
+## Site navigation
+
+
+``` {r site_activity}
+bsag_list <- function(cc_nodes, aa_edges, np, cc_graph) {
+  aa_graph <- tbl_graph(nodes = cc_nodes, edges = aa_edges)
+  joined_graph <- cc_graph %>% graph_join(aa_graph) 
+  joined_graph <- joined_graph %>% 
+    activate(edges) %>% 
+    mutate(student = if_else(is.na(student), "_course structure", as.character(student)))
+  return(list(joined_graph, np))
+}
+
+if (nrow(aabio) > 0) {
+  bioSiteGraphList <- bsag_list(
+    cc_nodes = bio_cc_nodes,
+    aa_edges = edges_from_aa(aabio),
+    np = bio_np,
+    cc_graph = bio_cc_graph)
+  
+  gb <- draw_site_activity_graph(bioSiteGraphList, alpha_low = 0.1) + 
+    ggtitle("Biopsychology activity")
+  
+  gb
+}
+
+if (nrow(aasoc) > 0) {
+  socSiteGraphList <- bsag_list(
+    cc_nodes = soc_cc_nodes,
+    aa_edges = edges_from_aa(aasoc),
+    np = soc_np,
+    cc_graph = soc_cc_graph)
+  
+  gs <- draw_site_activity_graph(socSiteGraphList, alpha_low = 0.1) + 
+    ggtitle("Social Psychology activity")
+  
+  gs
+}
+```
+
+``` {r animated_activity, include = FALSE}
+if (nrow(aabio) > 0) {
+  gba <- gb + transition_time(time) +
+    shadow_mark(1, colour = "black") +
+    labs(title = '{frame_time}')
+  anim_save("gb.gif", gba)
+}
+
+if (nrow(aasoc) > 0) {
+  gsa <- gs + transition_time(time) +
+    shadow_mark(1, colour = "black") +
+    labs(title = '{frame_time}')
+  anim_save("gs.gif", gsa)
+}
+```
+
+``` {r display_animation, results = 'asis'}
+if (nrow(aabio) > 0) {
+  cat("![](gb.gif)")
+}
+
+if (nrow(aasoc) > 0) {
+  cat("![](gs.gif)")
+}
+```
+
+
+``` {r eval = F}
+activity_tsibble <- function(aa, u = "minute") {
+  aa <- aa %>% 
+    mutate(time = round_date(timestamp, unit = u)) %>% 
+    group_by(time) %>% 
+    summarise(hits = length(unique(content_pk1)),
+              interactions = n(),
+              session = min(as.numeric(session)),
+              forum = any(forum_bool)) %>% 
+    mutate(int_hit_ratio = interactions / max(1, hits)) 
+  aa <- as_tibble(aa, key = var, index = time) %>% 
+    fill_gaps()
+  return(as_tsibble(aa, key = var, index = time))
+}
+
+activity_tsibble(aaBio18, u = "minute") %>% 
+  mutate(Date = as.Date(round_date(time, unit = "day"))) %>% 
+  ggplot(aes(x = time, y = hits)) +
+  geom_line() + 
+  facet_calendar(~ as.Date(time))
+```
+

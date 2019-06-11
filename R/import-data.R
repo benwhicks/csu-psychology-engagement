@@ -1,4 +1,8 @@
 suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(lakit))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(cluster))
+suppressPackageStartupMessages(library(tidygraph))
 
 # Parameters --------------------------------------------------------------
 
@@ -10,7 +14,7 @@ BIOCCFILE <- "cc Biopsychology 201860.csv"
 SOCCCFILE <- "cc Social Psychology 201860.csv"
 POSTSFILE <- "posts Psychology 201860.csv"
 QUALFILE <- "qual participants.csv"
-ZERODATE <- "2018-05-01" # pre-session date used to colour the site activity structure paths. Affects animation time before student activity
+ZERODATE <- "2018-06-01" # pre-session date used to colour the site activity structure paths. Affects animation time before student activity
 
 # Wranglers ---------------------------------------------------------------
 
@@ -198,17 +202,24 @@ nodes <- nodes %>% left_join(qual, by = c("Name"))
 nodes$qual_participant <- !is.na(nodes$qual)
 nodes[is.na(nodes$qual), ]$qual <- "None"
 
-# Joining cluster and qual back with subject ndoes
-nodesBio <- left_join(nodesBio, nodes %>% select(ID, Name, cluster, qual))
-nodesSoc <- left_join(nodesSoc, nodes %>% select(ID, Name, cluster, qual))
 
-# Joining grade_quartile, cluster and qual back with aa 
-nodeInfo <- nodes %>% 
-  select(name = Name, grade_quartile, cluster, qual, qual_participant)
-aaBio18 <- left_join(aaBio18, nodeInfo)
-aaSoc18 <- left_join(aaSoc18, nodeInfo)
 
-# Making graph structures
-networkBio <- tbl_graph(nodes = nodesBio, edges = edgesBio) 
-networkSoc <- tbl_graph(nodes = nodesSoc, edges = edgesSoc)
+# Making anonymous student identifiers
+studentList <- unique(nodes %>% select(ID, Name, qual_participant)) %>% 
+  arrange(desc(qual_participant), ID) %>% 
+  mutate(Student = factor(paste0("Student", row_number())))
+write_csv(studentList, path = file.path(DATDIR, 'student de-anon list.csv'))
+# Joining back with other fields
+# This is all horrible because of factor level differences with IDs
+# Would be fixed by factoring by Student at the beginning and carrying that through
+# in the rdata.psych package instead
+nodes <- left_join(nodes, studentList %>% select(Name, Student))
+nodesBio <- left_join(nodesBio, studentList %>% select(Name, Student))
+nodesSoc <- left_join(nodesSoc, studentList %>% select(Name, Student))
+aaBio18 <- left_join(aaBio18, studentList %>% select(name = Name, Student)) %>% 
+  left_join(nodes %>% select(name = Name, grade_quartile, cluster, qual))
+aaSoc18 <- left_join(aaSoc18, studentList %>% select(name = Name, Student)) %>% 
+  left_join(nodes %>% select(name = Name, grade_quartile, cluster, qual))
 
+medoids_nodes <- nodes[kmed$id.med,]
+medoid_students <- medoids_nodes$Student

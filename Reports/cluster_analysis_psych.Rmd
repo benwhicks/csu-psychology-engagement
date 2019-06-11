@@ -4,12 +4,6 @@ author: Ben Hicks
 output: html_document
 ---
 
-The aim of this document is to explore the options of clustering students in an online course into groups based on their activity data, academic performance, and then both together. There are two subjects analysed (Biopsychology and Social Psychology) and two types of data on each (activity or academic) so we explore 9 possibilities for each clustering method, as we can merge the data or subjects together as an option as well. Of interest is the variance amongst the clustering methods and what is a good choice to provide distinct groups based on the summary activity and academic performance of those groups. 
-
-Example code on R cluster analysis link below[^1] and here[^3].
-
-# 
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = F, message = F, warning = F, cache = T, fig.width = 8)
 #knitr::opts_chunk$set(dev = 'png') - - uncomment to reduce file size
@@ -24,191 +18,14 @@ suppressPackageStartupMessages(library(dendextend))
 suppressPackageStartupMessages(library(ggsci))
 suppressPackageStartupMessages(library(factoextra))
 suppressPackageStartupMessages(library(cluster))
+suppressPackageStartupMessages(library(rgl))
+
+knitr::knit_hooks$set(webgl = hook_webgl)
 ```
 
 ``` {r importing, cache=TRUE}
 source(file.path('..','R','psych_functions.R'))
-DATDIR <- file.path("~", "Data", "Psychology")
-BIOAAFILE <- "aa Biopsychology 201860.csv"
-SOCAAFILE <- "aa Social Psychology 201860.csv"
-MARKSFILE <- "marks Psychology 201860.csv"
-BIOCCFILE <- "cc Biopsychology 201860.csv"
-SOCCCFILE <- "cc Social Psychology 201860.csv"
-POSTSFILE <- "posts Psychology 201860.csv"
-
-snData <- read_csv(file.path(DATDIR, POSTSFILE), col_types = "cccffn")
-
-# Activity Accumulator Data --------------------------------------
-tidy_aa <- function(df) {
-  df <- df %>%
-    filter(!is.na(id)) %>%
-    mutate(forum_bool = str_detect(tolower(data), "discus|thread|forum"),
-                                      content = tidyDataField(data),
-                                      name = paste0(lastname, ', ', firstname)) %>%
-    rename(session = session_id, id = s_id, login_id = id)
-  df <- df %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
-  return(df)
-} 
-# --------------------------------------------------------------
-aaSoc18 <- read_csv(file.path(DATDIR, SOCAAFILE), col_types = "ffTcccccffcccf")  
-aaSoc18 <- tidy_aa(aaSoc18)
-aaBio18 <- read_csv(file.path(DATDIR, BIOAAFILE), col_types = "ffTcccccffcccf")
-aaBio18 <- tidy_aa(aaBio18)
-
-# Node preparation (i.e. data for each student)
-
-# Mark data
-marks18 <- read_csv(file.path(DATDIR, MARKSFILE)) %>%
-  mutate(mark = score / possible, id = factor(id)) 
-marksSummary18 <- marks18 %>% 
-  group_by(subject_name, student, id) %>%
-  summarise(avg_grade = mean(mark, na.rm = T)) %>%
-  rename(name = student, subject = subject_name)
-marksSoc18 <- marksSummary18 %>% filter(subject == "Social Psychology")
-marksBio18 <- marksSummary18 %>% filter(subject == "Biopsychology")
-
-# Discussion views from aa -------------------------------------------
-discussion_views <- function(df) {
-  df %>%
-    select(name, subject, forum_bool, data) %>%
-    filter(  forum_bool |
-           str_detect(tolower(data), "discus|thread|forum")
-         ) %>% 
-    group_by(subject, name) %>%
-    summarise(ForumViews = n()) %>%
-    group_by(name) %>%
-    summarise(ForumViews = sum(ForumViews))
-} 
-# ------------------------------------------------------------------
-discussionViewsBio <- discussion_views(aaBio18)
-discussionViewsSoc <- discussion_views(aaSoc18)
-
-# Other interaction data from aa
-aaSummaryBio <- aa_summary_by_user(aaBio18)
-aaSummaryBio <- merge(aaSummaryBio, unique(aaBio18 %>% select(id, name)))
-aaSummarySoc <- aa_summary_by_user(aaSoc18)
-aaSummarySoc <- merge(aaSummarySoc, unique(aaSoc18 %>% select(id, name)))
-
-
-# Node assembly ----------------------------------------------------------
-node_merge_and_make <- function(aaData, marksData, discussionsData) {
-  df <- aaData %>% select(-id) %>%
-  merge(marksData) %>%
-  merge(discussionsData, all.x = T) %>%
-  select(ID = id, Name = name, Subject = subject, 
-         Grade = avg_grade, Accesses = accesses, 
-         mean_clicks_per_access, sd_clicks, 
-         median_time_per_access, sd_time, 
-         TotalTime = total_time,
-         ForumViews) %>%
-    mutate(grade_quartile = ntile(Grade, 4), ID = factor(ID))
-  if (any(is.na(df$ForumViews))) {
-    df[is.na(df$ForumViews),]$ForumViews <- 0
-  }
-  if (any(is.na(df$Accesses))) {
-    df[is.na(df$Accesses),]$Accesses <- 0  
-  }
-  if (any(is.na(df$TotalTime))) {
-    df[is.na(df$TotalTime),]$TotalTime <- 0
-  }
-  df$Role <- "S"
-  return(df)
-} # ----------------------------------------------------------------------
-nodesBio <- node_merge_and_make(aaSummaryBio, marksBio18, discussionViewsBio)
-nodesSoc <- node_merge_and_make(aaSummarySoc, marksSoc18, discussionViewsSoc)
-
-# -----------------------------------------------------------------------------
-subject_code_to_name <- function(x) {
-  ifelse(str_detect(x, "208|458"), "Biopsychology", "Social Psychology")
-} # ---------------------------------------------------------------------------
-
-## ADD ##
-allStudentIDs <- unique(marks18$id)
-allForumIDs <- unique(snData$msgfrom)
-teacherIDs <- setdiff(allForumIDs, allStudentIDs)
-teacherNodes <- snData %>% 
-  filter(msgfrom %in% teacherIDs) %>% 
-  select(Name = poster, ID = msgfrom, Subject = subject) %>% 
-  mutate(ID = as.factor(ID), 
-         Grade = 0, Accesses = 100, ForumViews = 200, Role = "T", Subject = subject_code_to_name(Subject), 
-         TotalTime = as.duration(200000), median_time_per_access = as.duration(2000), sd_time = as.duration(200),
-         mean_clicks_per_access = 0, sd_clicks = 0, grade_quartile = 0) %>%
-  unique()
-teacherNodesBio <- teacherNodes %>% filter(Subject == "Biopsychology")
-teacherNodesSoc <- teacherNodes %>% filter(Subject == "Social Psychology")
-
-nodesBio <- rbind(nodesBio, teacherNodesBio)
-nodesSoc <- rbind(nodesSoc, teacherNodesSoc)
-nodes <- rbind(nodesBio, nodesSoc)
-```
-
-``` {r modelling_setup}
-
-make_normed_matrix <- function(df, return_ids = FALSE) {
-  ids <- df$ID
-  df$median_time_per_access <- as.numeric(as_duration_from_string(df$median_time_per_access))
-  df$sd_time <- as.numeric(as_duration_from_string(df$sd_time))
-  df <- as.data.frame(sapply(df %>% 
-                         filter(Role == "S") %>% 
-                         select(-ID, -Name, -Subject, -Role, -grade_quartile), 
-                       as.numeric))
-  #gq <- df$grade_quartile # does not need to be normed
-  df <- scale(df)
-  if (return_ids) {
-    df$ID <- ids
-  }
-  #df$grade_quartile <- gq
-  return(df)
-}
-
-nodeMatrixBio <- make_normed_matrix(nodesBio)
-nodeMatrixSoc <- make_normed_matrix(nodesSoc)
-nodes <- rbind(nodesBio, nodesSoc) %>% filter(Role == "S")
-nodeMatrix <- make_normed_matrix(nodes)
-
-draw_dendrogram <- function(x, dist_metric = "euclidian", method = "ward.D",clust_k = 4) {
-  hc <- hclust(dist(x, method = dist_metric), method = method)
-  dend <- as.dendrogram(hc)
-  clusters <- cutree(hc, clust_k)
-  clist <- pal_lancet()(clust_k)
-  dend %>%
-    set("leaves_col", value = clist, k = clust_k) %>%
-    set("labels", "none") %>%
-    set("branches_k_color", value = clist, k = clust_k) %>%
-    plot(axes = FALSE, leaflab = "none", xlab = paste(dist_metric, "metric, Cluster method:", method))
-}
-
-draw_heatmap <- function(x, dist_metric = "euclidian", method = "ward.D", ...) {
-  heatmap(x,
-          distfun = function(d)dist(d, method = dist_metric),
-          hclustfun = function(d)hclust(d, method = method),
-          ...)
-}
-
-draw_cluster_table <- function(x, dist_metric = "euclidian", method = "ward.D",clust_k = 4) {
-  hcAll <- hclust(dist(x, method = D_METRIC), method = METHOD)
-  clustersAll <- cutree(hcAll, clust_k)
-  nodes$clusterfull <- clustersAll
-  clusterAllSummary <- nodes %>% 
-  group_by(clusterfull) %>%
-  summarise(n = n(), 
-            Grade = mean(Grade), 
-            Accesses = mean(Accesses), 
-            clicks_pa = mean(mean_clicks_per_access),
-            sd_clicks = mean(sd_clicks), 
-            median_time_pa = as.duration(mean(median_time_per_access)), 
-            sd_time = as.duration(mean(sd_time)),
-            TotalTime = as.duration(mean(TotalTime)), 
-            ForumViews = mean(ForumViews)) %>% 
-  rename(cluster = clusterfull)
-  knitr::kable(clusterAllSummary)
-}
-
-# Analysis of both courses combined
-k_all <- 6
-k_no_grade <- 4
-D_METRIC <- "euclidian"
-METHOD <- "ward.D"
+source(file.path('..', 'R', 'import-data.R'))
 ```
 
 
@@ -225,6 +42,32 @@ dBioGrd <- as.matrix(nodeMatrixBio[, 1])
 dSocGrd <- as.matrix(nodeMatrixSoc[, 1])
 dlist <- list(d, dBio, dSoc, dAct, dBioAct, dSocAct, dGrd, dBioGrd, dSocGrd)
 ```
+
+The aim of this document is to explore the options of clustering students in an online course into groups based on their activity data, academic performance, and then both together. There are two subjects analysed (Biopsychology and Social Psychology) and two types of data on each (activity or academic) so we explore 9 possibilities for each clustering method, as we can merge the data or subjects together as an option as well. Of interest is the variance amongst the clustering methods and what is a good choice to provide distinct groups based on the summary activity and academic performance of those groups. 
+
+Example code on R cluster analysis link below[^1] and here[^3], and for PCA here[^4] and here[^5].
+
+# Principal Component Analysis
+
+## PCA all data, both subjects
+
+``` {r pca_1}
+pc <- prcomp(d)
+knitr::kable(pc$rotation, digits = 3)
+summary(pc)
+```
+
+## Activity data, both subjects
+
+``` {r pca_2}
+pcAct <- prcomp(dAct)
+knitr::kable(pcAct$rotation, digits = 3)
+summary(pcAct)
+```
+
+## PCA Remarks
+
+We can see that the activity data on it's own explains more proportion of variance over the first few components than with the *Grade* variable included, indicating it might prove useful to exclude the *Grade* data when clustering, which will then provide insights on how the type of activity matches with academic performance.
 
 # Ideal number of clusters
 
@@ -393,12 +236,24 @@ df %>% group_by(cluster_hc2) %>% cluster_summary_table()
 df %>% group_by(cluster_kmed2) %>% cluster_summary_table()
 df %>% group_by(cluster_hc5) %>% cluster_summary_table()
 df %>% group_by(cluster_kmed5) %>% cluster_summary_table()
-
 ```
+
+# Summary
 
 ## Thoughts
 
 It seems best to choose the k-medoids clustering at 2 and 5, with 5 being possibly more useful for further analysis. 
+
+## Visualization of 5-Medoid clustering of Activity Data
+
+Apologies, the colours from one graph to the next do not match. Cluster 5 is purple in the first graph and light blue in the second 3D graph.
+
+``` {r cluster_plot_3d, webgl = TRUE}
+x <- princomp(dAct)$scores #need to generate coordinates
+clusters <- kmed5$clustering
+fviz_cluster(kmed5)
+plot3d(x, col = clusters)
+```
 
 # Resources
 
@@ -407,3 +262,7 @@ It seems best to choose the k-medoids clustering at 2 and 5, with 5 being possib
 [^2]: Gap statistic: https://statweb.stanford.edu/~gwalther/gap 
 
 [^3]: Unsupervised machine learning: http://www.sthda.com/english/wiki/print.php?id=234
+
+[^4]: PCA, 3D Visualization, and Clustering in R: https://planspace.org/2013/02/03/pca-3d-visualization-and-clustering-in-r/ 
+
+[^5]: PCA: prcomp vs princomp: http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/118-principal-component-analysis-in-r-prcomp-vs-princomp/
