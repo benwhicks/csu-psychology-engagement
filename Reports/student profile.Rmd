@@ -58,7 +58,7 @@ if (dim(aasoc)[1] > 0) {
   
   socActPlotStudent <- socUsage %>% 
    ggplot(aes(x = timestamp, y = Activity)) +
-    geom_point(alpha = 0.05, size = 7, width = 0, height = 0.1) +
+    geom_jitter(alpha = 0.05, size = 7, width = 0, height = 0.1) +
     ggthemes::theme_tufte() + 
     theme(axis.title.x = element_blank()) +
     ggtitle("Usage of items in Social Psychology")

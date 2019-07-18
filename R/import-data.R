@@ -3,6 +3,7 @@ suppressPackageStartupMessages(library(lakit))
 suppressPackageStartupMessages(library(lubridate))
 suppressPackageStartupMessages(library(cluster))
 suppressPackageStartupMessages(library(tidygraph))
+suppressPackageStartupMessages(library(data.table))
 
 # Parameters --------------------------------------------------------------
 
@@ -36,7 +37,7 @@ na.falsify <- function(x) {
   return(if_else(is.na(x), FALSE, x))
 }
 
-snData <- read_csv(file.path(DATDIR, POSTSFILE), col_types = "cccffn")
+snData <- fread(file.path(DATDIR, POSTSFILE), colClasses = "cccffn")
 
 # Activity Accumulator Data --------------------------------------
 tidy_aa <- function(df) {
@@ -49,10 +50,10 @@ tidy_aa <- function(df) {
   df <- df %>% mutate(forum_bool = if_else(is.na(forum_bool), FALSE, forum_bool))
   return(df)
 } # --------------------------------------------------------------
-aaSoc18 <- read_csv(file.path(DATDIR, SOCAAFILE), col_types = "ffTcccccffcccf") # can cause performance hit, if so do not specity columns and add as.factor lines to tidy_aa 
+aaSoc18 <- fread(file.path(DATDIR, SOCAAFILE), colClasses = "ffTcccccffcccf") # can cause performance hit, if so do not specity columns and add as.factor lines to tidy_aa 
 aaSoc18 <- tidy_aa(aaSoc18)
 
-aaBio18 <- read_csv(file.path(DATDIR, BIOAAFILE), col_types = "ffTcccccffcccf")
+aaBio18 <- fread(file.path(DATDIR, BIOAAFILE), colClasses = "ffTcccccffcccf")
 aaBio18 <- tidy_aa(aaBio18)
 
 # Course contents

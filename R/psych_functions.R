@@ -25,6 +25,30 @@ edges_from_aa <- function(x) {
                      #qual = aa$qual[1:(nrow(aa) - 1)]
   aa_edges <- aa_edges %>% 
     filter(student == student_from, session == session_from) %>% 
+    select(from, to, time, student, cluster) %>% # , grade_quartile, cluster, qual 
+    mutate(weight = 2)
+  return(aa_edges)
+}
+
+edges_from_aa_cluster <- function(x) {
+  aa <- x %>% 
+    filter(role == 'S', !is.na(content_pk1), timestamp < as.POSIXct('2018-10-30')) %>% 
+    select(id, time = timestamp, content_pk1, session, cluster) %>%  
+    #grade_quartile, cluster, qual) %>% 
+    mutate(id = factor(id), content_pk1 = factor(content_pk1)) %>% 
+    arrange(id, time)
+  aa_edges <- tibble(from = aa$content_pk1[1:(nrow(aa) - 1)],
+                     to =   aa$content_pk1[2:nrow(aa)],
+                     time = aa$time[2:nrow(aa)],
+                     student_from = aa$id[1:(nrow(aa) - 1)],
+                     student = aa$id[2:nrow(aa)],
+                     session_from = aa$session[1:(nrow(aa) - 1)],
+                     session = aa$session[2:nrow(aa)],
+                     #grade_quartile = aa$grade_quartile[1:(nrow(aa) - 1)])
+                     cluster = aa$cluster[1:(nrow(aa) - 1)])
+  #qual = aa$qual[1:(nrow(aa) - 1)]
+  aa_edges <- aa_edges %>% 
+    filter(student == student_from, session == session_from) %>% 
     select(from, to, time, student) %>% # , grade_quartile, cluster, qual 
     mutate(weight = 2)
   return(aa_edges)
@@ -113,6 +137,8 @@ draw_site_activity_graph <- function(graph_list, alpha_low = 0.1) {
           text = element_text(family = "TT Times New Roman"))
   return(g)
 }
+
+
 
 buildGraph <- function(graph) {
   g <- ggraph(graph, layout = "kk") +
