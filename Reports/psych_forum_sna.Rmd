@@ -148,11 +148,13 @@ In the tabular results for each forum network below, there are a few concepts wo
 
 ## Triads
 
-Studying each subset of possible 3-node subgraphs in the network has been shown to be effective in analysing affiliation networks[^5][^3]. In a _directed graph_ the possible connections (and their names) are outlined below:
+Studying each subset of possible 3-node subgraphs in the network has been shown to be effective in analysing affiliation networks[^5][^3]. 
 
 ### Mutual-Asymmetric-Null Triadic Classes
 
-![](images/triad_census.jpg)
+The Mutual-Asymmetric-Null encoding system classifies triad connections in a _directed graph_. The three numbers represent, in order, the number of (M)utual edges, the number of (A)symmetric edges, and the number of (N)ull or no edges between nodes. The possible connections (and their names) are outlined below:
+
+![](images/triad_census_types.png)
 
 ### Triad Census
 
@@ -175,7 +177,7 @@ plot_graph(g, remove_iso = T, no_legend = T)
 ``` {r soc2017_table, results = "asis"}
 features <- analyse_graph(forumGraphSoc17) 
 flextable(as.data.frame(features[1:8]))
-flextable(features$`Triad Census`) 
+flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
 ```
 
 ``` {r soc_2018}
@@ -187,7 +189,7 @@ plot_graph(g, remove_iso = T, no_legend = T)
 ``` {r soc2018_table, results = "asis", fig.width = 2}
 features <- analyse_graph(forumGraphSoc18) 
 flextable(as.data.frame(features[1:8]))
-flextable(features$`Triad Census`)
+flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
 ```
 
 ## Biopsychology
@@ -201,7 +203,7 @@ plot_graph(g, remove_iso = T, no_legend = T)
 ``` {r bio2017_table, results = "asis"}
 features <- analyse_graph(forumGraphBio17) 
 flextable(as.data.frame(features[1:8]))
-flextable(features$`Triad Census`)
+flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
 ```
 
 ``` {r bio_2018}
@@ -213,12 +215,37 @@ plot_graph(g, remove_iso = T, no_legend = T)
 ``` {r bio2018_table, results = "asis"}
 features <- analyse_graph(forumGraphBio18) 
 flextable(as.data.frame(features[1:8]))
-flextable(features$`Triad Census`)
+flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
 ```
 
 ## Remarks
 
-Of note is the...
+### Consistent patterns in the Triadic Census
+
+There are some regular patterns in all the forum networks that deviate significantly from the expected values. To understand what is going on it is best to look at the triads in similar groups comparing Mutual edges with Asymmetric edges. The first such group is comparing triad _012_ with triad _102_, where the former contains a single Asymmetric edge (a reply from one student to another, with a third student not connected) and the latter a Mutual edge (the reply is reciprocated at some point - not necassarily in the same forum thread). All graphs demonstrate the Asymmetric edge is much less likely than expected, and the Mutual edge much more abundant than expected.
+
+This trend continues if we look at triads with a single path like structure; _021C_, _021D_ and _021U_ containing more Asymmetric edges compared with _111D_, _111U_ and _201_ containing more mutual edges. This effect is not as consistent across all four forums, for instance Biopsychology in 2017 had greater than expected numbers of the _021U_ triad, but overall there is a trend of Mutual connections (edges) being favoured over Asymmetric ones. In the context of the forum, if Student A replies to a post of Student B it is highly likely that later in the course Student B will reply to Student A, forming a reciprocal relationship.
+
+### Triadic Census changes from 2017 to 2018
+
+The closed triads where not as consistent across the four forums, but did show some change from 2017 to 2018,and differences between the two subjects. Note that the *expected* number of triads for each of this closed triads was close to 0.
+
+``` {r triad_progression}
+df <- tibble(`MAN class` = c("120D", "120U", "120C", "210", "300"),
+             `SocPsy 2017` = analyse_graph(forumGraphSoc17)$`Triad Census`$Triads[12:16],
+             `SocPsy 2018` = analyse_graph(forumGraphSoc18)$`Triad Census`$Triads[12:16],
+             `BioPsy 2017` = analyse_graph(forumGraphBio17)$`Triad Census`$Triads[12:16],
+             `BioPsy 2018` = analyse_graph(forumGraphBio18)$`Triad Census`$Triads[12:16]
+             )
+flextable(df) %>% colformat_num(col_keys = c("SocPsy 2017", "SocPsy 2018", "BioPsy 2017", "BioPsy 2018"),
+                                digits = 0)
+```
+
+Looking at Biopsychology, although there was a drop in overall closed triads, the balance of these closed triads shifted to the more egalitarian networks away from the more hierarchical - the triads with _D_ or _U_ tend to favour a hierarchical network where as _120C_, _210_ and _300_ are more representative or egalitarian networks[^7]. Social Psychology saw a broad strengthening in the number of these closed triads forming. 
+
+``` {r edge_strength}
+# Need to add stuff using edge.betweenness function for finding strong paths
+```
 
 # References
 
@@ -233,6 +260,8 @@ Of note is the...
 [^5]: Davis, J.A. and Leinhardt, S. (1972). *The Structure of Positive Interpersonal Relations in Small Groups.* In J. Berger (Ed.), Sociological Theories in Progress, Volume 2, 218-251. Boston: Houghton Mifflin.
 
 [^6]: Erdos, P. and Renyi, A., (1959). *On random graphs, Publicationes Mathematicae 6*, 290–297.
+
+[^7]: Need to find reference that supports what I think is right here.
 
 ``` {r other_links, eval = F}
 # https://www.cs.cornell.edu/home/kleinber/networks-book/networks-book-ch03.pdf
