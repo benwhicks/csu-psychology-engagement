@@ -3,7 +3,7 @@
 library(rdata.psych)
 library(ggraph)
 library(tidygraph)
-library(ggplot2)
+library(tidyverse)
 
 forum_plot <- function(g, iso = T, teacher = T) {
   if (iso) {

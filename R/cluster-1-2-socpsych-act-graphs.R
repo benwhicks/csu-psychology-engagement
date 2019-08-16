@@ -34,12 +34,12 @@ content_primary_keys <- factor(content_primary_keys, levels = content_primary_ke
 content_levels <- levels(content_primary_keys)
 
 cc_nodes <-  ccSoc18 %>% 
-  select(id = pk1, title, data, handle) %>% 
-  mutate(id = factor(id, levels = content_levels))
+  select(id = pk1, title, data, handle) #%>% 
+  #mutate(id = factor(id, levels = content_levels))
 
 cc_edges <-  tibble(
-  from = factor(ccSoc18$parent_pk1, levels = content_levels),
-  to = factor(ccSoc18$pk1, levels = content_levels),
+  from = factor(ccSoc18$parent_pk1), #, levels = content_levels),
+  to = factor(ccSoc18$pk1), #, levels = content_levels),
   alfalfa = 1.0
 ) %>% 
   filter(!is.na(from), !is.na(to))
@@ -68,8 +68,8 @@ i_to <- 2:nrow(aaEdgePrep)
 i_fm <- 1:(nrow(aaEdgePrep) - 1)
 
 aa_edges <- data.table(
-  from =   factor(aaEdgePrep$content_pk1[i_fm], levels = content_levels),
-  to =     factor(aaEdgePrep$content_pk1[i_to], levels = content_levels),
+  from =   factor(aaEdgePrep$content_pk1[i_fm]), #, levels = content_levels),
+  to =     factor(aaEdgePrep$content_pk1[i_to]), #, levels = content_levels),
   pfrom =  aaEdgePrep$person[i_fm],
   pto =    aaEdgePrep$person[i_to],
   sfrom =  aaEdgePrep$session[i_fm],

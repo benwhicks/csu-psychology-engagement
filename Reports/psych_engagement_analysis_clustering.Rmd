@@ -214,3 +214,4 @@ gBioCluster <- buildClusterKMetGraph(networkBio %>%
                                        filter(Role == "S"))
 gBioCluster + ggtitle("Clusters for PSY208: Biopsychology")
 ```
+

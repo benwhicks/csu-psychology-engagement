@@ -12,6 +12,7 @@ suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(knitr))
 suppressPackageStartupMessages(library(ggraph))
 suppressPackageStartupMessages(library(flextable))
+suppressPackageStartupMessages(library(lakit))
 
 
 # Defining parameters
@@ -180,6 +181,17 @@ flextable(as.data.frame(features[1:8]))
 flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
 ```
 
+Same as above, but with the isolated points removed:
+
+``` {r soc2017_table_zoom, results = "asis"}
+features <- analyse_graph(forumGraphSoc17 %>% 
+                            activate(nodes) %>% 
+                            filter(!node_is_isolated())) 
+flextable(as.data.frame(features[1:8]))
+flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
+```
+
+
 ``` {r soc_2018}
 g <- forumGraphSoc18
 plot_graph(g, no_legend = T) + ggtitle("Social Psychology 2018 Forum Network")
@@ -191,6 +203,17 @@ features <- analyse_graph(forumGraphSoc18)
 flextable(as.data.frame(features[1:8]))
 flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
 ```
+
+Same as above, but with the isolated points removed:
+
+``` {r soc2018_table_zoom, results = "asis"}
+features <- analyse_graph(forumGraphSoc18 %>% 
+                            activate(nodes) %>% 
+                            filter(!node_is_isolated())) 
+flextable(as.data.frame(features[1:8]))
+flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
+```
+
 
 ## Biopsychology
 
@@ -206,6 +229,17 @@ flextable(as.data.frame(features[1:8]))
 flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
 ```
 
+Same as above, but with the isolated points removed:
+
+``` {r bio2017_table_zoom, results = "asis"}
+features <- analyse_graph(forumGraphBio17 %>% 
+                            activate(nodes) %>% 
+                            filter(!node_is_isolated())) 
+flextable(as.data.frame(features[1:8]))
+flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
+```
+
+
 ``` {r bio_2018}
 g <- forumGraphBio18
 plot_graph(g, no_legend = T) + ggtitle("Biopsychology 2018 Forum Network")
@@ -218,6 +252,17 @@ flextable(as.data.frame(features[1:8]))
 flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
 ```
 
+Same as above, but with the isolated points removed:
+
+``` {r bio2018_table_zoom, results = "asis"}
+features <- analyse_graph(forumGraphBio18 %>% 
+                            activate(nodes) %>% 
+                            filter(!node_is_isolated())) 
+flextable(as.data.frame(features[1:8]))
+flextable(features$`Triad Census`) %>% colformat_num(col_keys = c("Triads", "expected"), digits = 0)
+```
+
+
 ## Remarks
 
 ### Consistent patterns in the Triadic Census
@@ -228,7 +273,7 @@ This trend continues if we look at triads with a single path like structure; _02
 
 ### Triadic Census changes from 2017 to 2018
 
-The closed triads where not as consistent across the four forums, but did show some change from 2017 to 2018,and differences between the two subjects. Note that the *expected* number of triads for each of this closed triads was close to 0.
+The closed triads where not as consistent across the four forums, but did show some change from 2017 to 2018,and differences between the two subjects. Note that the *expected* number of triads for each of this closed triads was close to 0 for the complete graph, and only reached around 5 for some of the *120_* triads in some of the networks.
 
 ``` {r triad_progression}
 df <- tibble(`MAN class` = c("120D", "120U", "120C", "210", "300"),
@@ -244,7 +289,9 @@ flextable(df) %>% colformat_num(col_keys = c("SocPsy 2017", "SocPsy 2018", "BioP
 Looking at Biopsychology, although there was a drop in overall closed triads, the balance of these closed triads shifted to the more egalitarian networks away from the more hierarchical - the triads with _D_ or _U_ tend to favour a hierarchical network where as _120C_, _210_ and _300_ are more representative or egalitarian networks[^7]. Social Psychology saw a broad strengthening in the number of these closed triads forming. 
 
 ``` {r edge_strength}
-# Need to add stuff using edge.betweenness function for finding strong paths
+# Need to add stuff using edge.betweenness function for finding strong paths,
+
+# then look at using the tidytext package for sentiment analysis, etc
 ```
 
 # References
