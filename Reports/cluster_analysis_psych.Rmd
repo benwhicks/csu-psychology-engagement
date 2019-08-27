@@ -19,13 +19,15 @@ suppressPackageStartupMessages(library(ggsci))
 suppressPackageStartupMessages(library(factoextra))
 suppressPackageStartupMessages(library(cluster))
 suppressPackageStartupMessages(library(rgl))
+suppressPackageStartupMessages(library(rdata.psych))
+suppressPackageStartupMessages(library(plotly))
 
 knitr::knit_hooks$set(webgl = hook_webgl)
 ```
 
 ``` {r importing, cache=TRUE}
-source(file.path('..','R','psych_functions.R'))
-source(file.path('..', 'R', 'import-data.R'))
+#source(file.path('..','R','psych_functions.R'))
+#source(file.path('..', 'R', 'import-data.R'))
 ```
 
 
@@ -250,9 +252,25 @@ Apologies, the colours from one graph to the next do not match. Cluster 5 is pur
 
 ``` {r cluster_plot_3d, webgl = TRUE}
 x <- princomp(dAct)$scores #need to generate coordinates
-clusters <- kmed5$clustering
-fviz_cluster(kmed5)
-plot3d(x, col = clusters)
+clusters <- kmed18$clustering
+fviz_cluster(kmed18)
+plot3d(x, col = factor(clusters))
+
+act_clust_grade <- data.frame(Grade = grades, Cluster = clusters, x = x[,1], y = x[,2], z = x[,3])
+```
+
+``` {r testing_stuff}
+df <- data.frame(x = x[,1], y = x[,2], z = x[,3], cluster = clusters)
+p <- plot_ly(df, 
+             x = ~x, y = ~y, z = ~z, color = ~cluster, 
+             size = 1, 
+             colors = c('#4AC6B7', '#1972A4', '#965F8A', '#FF7070', '#C61951'),
+             showlegend = F)
+p
+p_act_clust_grade <- plot_ly(act_clust_grade,
+                             x = ~x, y = ~y, z = ~Grade, color = ~Cluster,
+                             size = 1,
+                             colors = c('#4AC6B7', '#1972A4', '#965F8A', '#FF7070', '#C61951'))
 ```
 
 # Resources

@@ -246,3 +246,77 @@ buildClusterKMetGraph <- function(graph) {
     theme(axis.line = element_blank(), axis.title = element_blank(), axis.text = element_blank(), axis.ticks = element_blank())
   return(g)
 }
+
+impute_na_with_previous <- function(vector) {
+  x <- vector
+  n <- length(x)
+  for (i in 1:n) {
+    if (is.na(x[[i]])) {
+      if (i > 1) { # 1's at the beginning are left NA
+        x[[i]] <- x[[i - 1]]
+      }
+    }
+  }
+  return(x)
+}
+
+classify_bio_title <- function(title) {
+  if (is.na(title)) {return("Other")}
+  t <- tolower(title)
+  if (str_detect(t, "forum|discus|thread")) {
+    return("Forum")
+  } 
+  if (str_detect(t, "game")) {
+    return("Game")
+  } 
+  if (str_detect(t, "lab")) {
+    return("Lab")
+  }
+  if (str_detect(t, "brain|mind")) {
+    return("Brain")
+  }
+  if ((!str_detect(t, "peer-review")) & str_detect(t, "revision|review")) {
+    return("Revision")
+  }
+  if (str_detect(t, "meeting")) {
+    return("Meeting")
+  }
+  if (str_detect(t, "[0-9]\\.[0-9]")) {
+    return("Content")
+  }
+  if (str_detect(t, "exam|assess")) {
+    return("Assessment")
+  }
+  return("Other")
+}
+
+classify_soc_title <- function(title) {
+  if (is.na(title)) {return("Other")}
+  t <- tolower(title)
+  if (str_detect(t, "forum|discus|thread|meet each other")) {
+    return("Forum")
+  } 
+  if (str_detect(title, "Tutorial|Week 2: The Social Self|Week 3:Perc|Week 4:Stereo|Week 5:Att|Week 6:Conf|Week 10:Att|Week 11:Help|Applied Social")) {
+    return("Tutorial")
+  } 
+  if (str_detect(t, "lab")) {
+    return("Lab")
+  }
+  if (str_detect(t, "brain|mind")) {
+    return("Brain")
+  }
+  if ((!str_detect(t, "peer-review")) & str_detect(t, "revision|review|quizlet")) {
+    return("Revision")
+  }
+  if (str_detect(t, "meeting")) {
+    return("Meeting")
+  }
+  if (str_detect(t, "exam|assess|test")) {
+    return("Assessment")
+  }
+  if (str_detect(t, "week|lecture|chapter")) {
+    return("Content")
+  }
+  return("Other")
+  
+}
