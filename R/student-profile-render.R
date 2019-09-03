@@ -15,10 +15,10 @@ library(tsibble)
 library(sugrrants)
 library(gganimate)
 library(tidygraph)
+library(rdata.psych)
 
 dirpath <- file.path('~','csu-psychology-engagement')
 source(file.path(dirpath,'R','psych_functions.R'))
-source(file.path(dirpath, 'R', 'import-data.R'))
 
 # graph set up
 bio_cc_nodes <- nodes_from_cc(ccBio18, subject = "Bio")
@@ -43,7 +43,7 @@ for (student in qual_students) {
 }
 
 # Medoids
-medoids_nodes <- nodes[kmed$id.med,]
+medoids_nodes <- nodes[kmed18$id.med,]
 medoid_students <- medoids_nodes$Student
 for (student in medoid_students) {
   cluster <- medoids_nodes[medoids_nodes$Student == student,]$cluster
