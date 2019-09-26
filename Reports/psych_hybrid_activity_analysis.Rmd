@@ -46,13 +46,20 @@ suppressPackageStartupMessages(library(knitr))
 suppressPackageStartupMessages(library(ggraph))
 suppressPackageStartupMessages(library(flextable))
 suppressPackageStartupMessages(library(lubridate))
-source(file.path('R', 'psych_functions.R'))
+suppressPackageStartupMessages(library(ggforce))
+source(file.path('~', 'csu-psychology-engagement', 'R', 'psych_functions.R'))
 
 # Loading data
 aabio <- rdata.psych::aaBio18 %>% as_tibble()
 aasoc <- rdata.psych::aaSoc18 %>% as_tibble()
 ccbio <- rdata.psych::ccBio18 %>% as_tibble()
 ccsoc <- rdata.psych::ccSoc18 %>% as_tibble()
+nodesBio <- rdata.psych::nodesBio18 %>% 
+  filter(Role == "S") %>% 
+  as_tibble()
+nodesSoc <- rdata.psych::nodesSoc18 %>% 
+  filter(Role == "S") %>% 
+  as_tibble()
 
 # Classifying cc
 ccbio$type <- ccbio$title %>% map_chr(classify_bio_title)
@@ -123,17 +130,18 @@ make_aa_graph <- function(aa, compress = TRUE, date_floor = "months") {
 }
 
 draw_cc <- function(graph, layout) {
-  ggraph(graph, layout = "manual", node.positions = layout) +
+  ggraph(graph, layout = "manual", 
+         x = layout$x, y = layout$y) +
     geom_node_point(aes(color = handle)) +
     geom_node_text(aes(label = title), alpha = 0.8, size = 1.5) +
     geom_edge_link() +
     theme_graph() +
-    theme(legend.position = "none",
-          text = element_text(family = "TT Times New Roman"))
+    theme(legend.position = "none")
 }
 
 draw_ag <- function(graph, layout) {
-  ggraph(graph, layout = "manual", node.positions = layout) +
+  ggraph(graph, layout = "manual", 
+         x = layout$x, y = layout$y) +
     geom_node_point(aes(color = handle), size = 0.5, alpha = 0.3) +
     geom_edge_link(aes(alpha = alpha)) +
     theme_graph() + 
@@ -145,7 +153,8 @@ draw_ag <- function(graph, layout) {
 }
 
 draw_ag_timeColor <- function(graph, layout) {
-  ggraph(graph, layout = "manual", node.positions = layout) +
+  ggraph(graph, layout = "manual", 
+         x = layout$x, y = layout$y) +
     geom_node_point(aes(color = handle), size = 2, alpha = 0.8) +
     geom_edge_link(aes(alpha = alpha*0.4, color = as.numeric(timestamp))) +
     scale_edge_color_continuous(low = "blue", high = "dark red") +
@@ -162,15 +171,16 @@ draw_ag_timeColor <- function(graph, layout) {
 
 The subject sites on Blackboard have a built in hierarchy; content on the site has a folder structure, so each content item may have a single *parent* which it is contained within.This leads to a natural way of displaying the course structure, with the *parent* to *child* relationships forming the edges of the network.
 
-``` {r setting_up_graphs, cache = TRUE}
+``` {r setting_up_graphs}
 set.seed(18)
 
 cg_bio <- make_cc_graph(ccbio)
 bio_layout <- create_layout(cg_bio, layout = "nicely")
-bio_act_by_cluster <- 1:5 %>% 
+bio_clusters <- min(nodesBio$cluster, na.rm = T):max(nodesBio$cluster, na.rm = T)
+bio_act_by_cluster <- bio_clusters %>% 
   map(function(n){aabio %>% filter(cluster == n) %>% make_aa_graph(date_floor = "weeks")})
 jg_clusters_bio <- cg_bio
-for (n in 1:5) {
+for (n in bio_clusters) {
   jg_clusters_bio <- jg_clusters_bio %>% graph_join(bio_act_by_cluster[[n]], by = "id")
 }
 
@@ -191,11 +201,12 @@ soc_layout <- create_layout(cg_soc, layout = "nicely")
 #   make_aa_graph()
 # jg_12_soc <- cg_soc %>% graph_join(ag_1_soc) %>% graph_join(ag_2_soc)
 
-soc_act_by_cluster <- 1:5 %>% 
+soc_clusters <- min(nodesSoc$cluster, na.rm = T):max(nodesSoc$cluster, na.rm = T)
+soc_act_by_cluster <- soc_clusters %>% 
   map(function(n){aasoc %>% filter(cluster == n) %>% make_aa_graph(date_floor = "weeks")})
 jg_clusters_soc <- cg_soc
-for (n in 1:5) {
-  jg_clusters_soc <- jg_clusters_soc %>% graph_join(soc_act_by_cluster[[n]], by = "id")
+for (n in soc_clusters) {
+  jg_clusters_soc <- jg_clusters_soc %>% graph_join(soc_act_by_cluster[[n - 2]], by = "id")
 }
 
 
@@ -238,9 +249,8 @@ bio_cc_plot +
 ``` {r cluster_summaries}
 cluster_summary_table <- function(x) {
   x %>%
+    filter(!is.na(cluster)) %>% 
     summarise(n = n(), 
-              Biopsych = sum(Subject == "Biopsychology"),
-              SocPsych = sum(Subject == "Social Psychology"),
               Grade = mean(Grade, na.rm = T),
               Accesses = mean(Accesses, na.rm = T),
               clicks_pa = mean(mean_clicks_per_access, na.rm = T),
@@ -253,15 +263,35 @@ cluster_summary_table <- function(x) {
     autofit()
 }
 
-factoextra::fviz_cluster(rdata.psych::kmed18)
-nodes <- bind_rows(rdata.psych::nodesBio18, rdata.psych::nodesSoc18) %>% 
-  filter(cluster %in% 1:5)
-nodes %>% group_by(cluster) %>% cluster_summary_table()
+
+cluster_plot <- function(x) {
+  p <- x %>% 
+    filter(Role == "S") %>% 
+    ggplot(aes(x = Dim1, y = Dim2, 
+               color = factor(cluster), 
+               size = grade_quartile)) +
+    scale_size_continuous(trans = "exp",
+                          name = "Grade Quartile",
+                          guide = "none") +
+    geom_point(alpha = 0.4) +
+    scale_color_manual(values = wesanderson::wes_palettes[[8]],
+                       name = "Cluster") +
+    theme_void() 
+  p
+}
+
+cluster_plot(nodesBio) + ggtitle("Biopsychology Clusters")
+
+nodesBio %>% group_by(cluster) %>% cluster_summary_table()
+
+cluster_plot(nodesSoc) + ggtitle("Social Psychology Clusters")
+
+nodesSoc %>% group_by(cluster) %>% cluster_summary_table()
 ```
 
 ## Site Activity
 
-``` {r draw_site_activity}
+``` {r draw_site_activity, eval = F}
 soc_cluster_act_plot + ggtitle(
   'Social Psychology Site Activity', 
   subtitle = 'By cluster, time running left to right')
@@ -272,25 +302,25 @@ bio_cluster_act_plot + ggtitle(
 
 ## Spectral Analysis
 
-``` {r spectral_analysis_bio, cache = TRUE}
+``` {r spectral_analysis_bio_write, eval = FALSE}
 # spectral analysis
 set.seed(31415)
 
-bio_act_intervals_n <- aabio %>% 
-  filter(!is.na(cluster)) %>% 
-  select(cluster, person, timestamp) %>% 
-  group_by(cluster, person) %>% 
-  nest() %>% 
-  mutate(intervals = data %>% map(~timelist_to_difference(.$timestamp))) %>% 
-  select(cluster, person, intervals) %>% 
-  unnest()  %>% 
-  group_by(cluster) %>% 
-  sample_n(2000)
-
-bio_cluster_spectral_comparison <- bio_act_intervals_n %>% 
-  plot_timestamp_spectrum() +
-  facet_grid(cluster ~ .) +
-  ggtitle('Biopsychology Activity Spectrums')
+# bio_act_intervals_n <- aabio %>% 
+#   filter(!is.na(cluster)) %>% 
+#   select(cluster, person, timestamp) %>% 
+#   group_by(cluster, person) %>% 
+#   nest() %>% 
+#   mutate(intervals = data %>% map(~timelist_to_difference(.$timestamp))) %>% 
+#   select(cluster, person, intervals) %>% 
+#   unnest()  %>% 
+#   group_by(cluster) %>% 
+#   sample_n(2000)
+# 
+# bio_cluster_spectral_comparison <- bio_act_intervals_n %>% 
+#   plot_timestamp_spectrum() +
+#   facet_grid(cluster ~ .) +
+#   ggtitle('Biopsychology Activity Spectrums')
 
 bio_act_session_intervals <- aabio %>% 
   filter(!is.na(cluster)) %>% 
@@ -306,10 +336,9 @@ bio_act_session_intervals_n <- bio_act_session_intervals %>%
   group_by(cluster) %>% 
   sample_n(2000)
 
-bio_cluster_comparison_session <- bio_act_session_intervals_n %>% 
-  plot_timestamp_spectrum() +
-  facet_grid(cluster ~ .)+
-  ggtitle('Biopsychology Activity Spectrums', subtitle = 'Signals below 1 day removed')
+rm(bio_act_session_intervals)
+
+saveRDS(bio_act_session_intervals_n, 'bio_act_session_intervals_n.rds')
 
 bio_act_item_intervals <- aabio %>% 
   filter(!is.na(cluster)) %>% 
@@ -325,6 +354,21 @@ bio_act_item_intervals_n <- bio_act_item_intervals %>%
   group_by(cluster, type) %>% 
   sample_n(200, replace = T)
 
+rm(bio_act_item_intervals)
+
+saveRDS(bio_act_item_intervals_n, 'bio_act_item_intervals_n.rds')
+```
+
+``` {r spectral_analysis_bio_read}
+bio_act_session_intervals_n <- readRDS('bio_act_session_intervals_n.rds')
+
+bio_cluster_comparison_session <- bio_act_session_intervals_n %>% 
+  plot_timestamp_spectrum() +
+  facet_grid(cluster ~ .)+
+  ggtitle('Biopsychology Activity Spectrums', subtitle = 'Signals below 1 day only')
+
+bio_act_item_intervals_n <- readRDS('bio_act_item_intervals_n.rds')
+
 bio_act_item_plot <- bio_act_item_intervals %>% 
   #filter(type != "db_collection_entry") %>% 
   plot_timestamp_spectrum() +
@@ -333,22 +377,22 @@ bio_act_item_plot <- bio_act_item_intervals %>%
   ggtitle('Activity spectrums - Biopsychology', subtitle = 'Cluster v Item')
 ```
 
-``` {r spectral_analysis_soc, cache = TRUE}
-soc_act_intervals_n <- aasoc %>% 
-  filter(!is.na(cluster)) %>% 
-  select(cluster, person, timestamp) %>% 
-  group_by(cluster, person) %>% 
-  nest() %>% 
-  mutate(intervals = data %>% map(~timelist_to_difference(.$timestamp))) %>% 
-  select(cluster, person, intervals) %>% 
-  unnest() %>% 
-  group_by(cluster) %>% 
-  sample_n(2000)
-
-soc_cluster_spectral_comparison <- soc_act_intervals_n %>% 
-  plot_timestamp_spectrum() +
-  facet_grid(cluster ~ .) +
-  ggtitle('Social Psychology Activity Spectrums')
+``` {r spectral_analysis_soc_write, eval = FALSE}
+# soc_act_intervals_n <- aasoc %>% 
+#   filter(!is.na(cluster)) %>% 
+#   select(cluster, person, timestamp) %>% 
+#   group_by(cluster, person) %>% 
+#   nest() %>% 
+#   mutate(intervals = data %>% map(~timelist_to_difference(.$timestamp))) %>% 
+#   select(cluster, person, intervals) %>% 
+#   unnest() %>% 
+#   group_by(cluster) %>% 
+#   sample_n(2000)
+# 
+# soc_cluster_spectral_comparison <- soc_act_intervals_n %>% 
+#   plot_timestamp_spectrum() +
+#   facet_grid(cluster ~ .) +
+#   ggtitle('Social Psychology Activity Spectrums')
 
 soc_act_session_intervals <- aasoc %>% 
   filter(!is.na(cluster)) %>% 
@@ -364,10 +408,9 @@ soc_act_session_intervals_n <- soc_act_session_intervals %>%
   group_by(cluster) %>% 
   sample_n(2000)
 
-soc_cluster_comparison_session <- soc_act_session_intervals_n %>% 
-  plot_timestamp_spectrum() +
-  facet_grid(cluster ~ .) +
-  ggtitle('Social Psychology Activity Spectrums', subtitle = 'Signals below 1 day removed')
+rm(soc_act_session_intervals)
+
+saveRDS(soc_act_session_intervals_n, 'soc_act_session_intervals_n.rds')
 
 soc_act_item_intervals <- aasoc %>% 
   filter(!is.na(cluster)) %>% 
@@ -383,22 +426,36 @@ soc_act_item_intervals_n <- soc_act_item_intervals %>%
   group_by(cluster, type) %>% 
   sample_n(300, replace = T)
 
+rm(soc_act_item_intervals)
+
+saveRDS(soc_act_item_intervals_n, 'soc_act_item_intervals_n.rds')
+```
+
+``` {r spectral_analysis_soc_read}
+soc_act_session_intervals_n <- readRDS('soc_act_session_intervals_n.rds')
+
+soc_cluster_comparison_session <- soc_act_session_intervals_n %>% 
+  plot_timestamp_spectrum() +
+  facet_grid(cluster ~ .) +
+  ggtitle('Social Psychology Activity Spectrums', subtitle = 'Signals below 1 day removed')
+
+soc_act_item_intervals_n <- readRDS('soc_act_item_intervals_n.rds')
+
 soc_act_item_plot <- soc_act_item_intervals_n %>% 
   #filter(type != "db_collection_entry") %>% 
   plot_timestamp_spectrum() +
   theme(strip.text.y = element_text(angle = 0))+
   facet_grid(type ~ cluster) + 
   ggtitle('Activity spectrums - Social Psychology', subtitle = 'Cluster v Item')
-
 ```
 
 ``` {r draw_spetral_plots}
-soc_cluster_spectral_comparison
+#soc_cluster_spectral_comparison
 soc_cluster_comparison_session
-bio_cluster_spectral_comparison
+#bio_cluster_spectral_comparison
 bio_cluster_comparison_session
 ```
 
 ``` {r item_spectrums}
-aabio_imputed <- aab
+# In progress
 ```
