@@ -302,133 +302,85 @@ bio_cluster_act_plot + ggtitle(
 
 ## Spectral Analysis
 
-``` {r spectral_analysis_bio_write, eval = FALSE}
+``` {r spectral_analysis_functions}
 # spectral analysis
+timelist_to_difference_n <- function(timestamps, n = 100) {
+  n <- length(timestamps)
+  M <- matrix(rep(as.numeric(timestamps), n), ncol = n, nrow = n)
+  M_diff <- M - t(M)
+  diff <- abs(M_diff[upper.tri(M_diff, diag = FALSE)])
+  if (min(diff) == 0) {
+    next_min <- min(diff[diff > 0])
+    diff <- c(diff[diff > 0], rep(next_min * 0.5, length(diff[diff == 0])))
+  }
+  output <- lubridate::as.duration(diff)
+  if (length(output) > n) {
+    output <- sample(output, n)
+  }
+  return(output)
+}
+
+aa_to_session_intervals_n <- function(x, n = 100) {
+  x %>% 
+    filter(!is.na(cluster)) %>% 
+    select(cluster, grade_quartile, person, timestamp, session) %>% 
+    group_by(cluster, grade_quartile, person, session) %>% 
+    nest() %>% 
+    mutate(intervals = map2(.x = data, .y = n, 
+                            ~timelist_to_difference_n(.x$timestamp, .y))) %>% 
+    select(cluster, grade_quartile, person, session, intervals) %>% 
+    unnest() %>% 
+    filter(as.duration(intervals) < as.duration('1 day'))
+}
+
+aa_to_item_intervals_n <- function(x, n = 100) {
+  x %>% 
+    filter(!is.na(cluster)) %>% 
+    select(cluster, person, timestamp, session, type) %>% 
+    group_by(cluster, person, session, type) %>% 
+    nest() %>% 
+    mutate(intervals = map2(.x = data, .y = n, 
+                            ~timelist_to_difference_n(.x$timestamp, .y))) %>% 
+    select(cluster, person, session, intervals, type) %>% 
+    unnest() %>% 
+    filter(as.duration(intervals) < as.duration('1 day'))
+}
+```
+
+``` {r spectral_analysis_bio_write, eval = FALSE}
 set.seed(31415)
-
-# bio_act_intervals_n <- aabio %>% 
-#   filter(!is.na(cluster)) %>% 
-#   select(cluster, person, timestamp) %>% 
-#   group_by(cluster, person) %>% 
-#   nest() %>% 
-#   mutate(intervals = data %>% map(~timelist_to_difference(.$timestamp))) %>% 
-#   select(cluster, person, intervals) %>% 
-#   unnest()  %>% 
-#   group_by(cluster) %>% 
-#   sample_n(2000)
-# 
-# bio_cluster_spectral_comparison <- bio_act_intervals_n %>% 
-#   plot_timestamp_spectrum() +
-#   facet_grid(cluster ~ .) +
-#   ggtitle('Biopsychology Activity Spectrums')
-
-bio_act_session_intervals <- aabio %>% 
-  filter(!is.na(cluster)) %>% 
-  select(cluster, person, timestamp, session) %>% 
-  group_by(cluster, person, session) %>% 
-  nest() %>% 
-  mutate(intervals = data %>% map(~timelist_to_difference(.$timestamp))) %>% 
-  select(cluster, person, session, intervals) %>% 
-  unnest() %>% 
-  filter(as.duration(intervals) < as.duration('1 day')) 
-
-bio_act_session_intervals_n <- bio_act_session_intervals %>% 
-  group_by(cluster) %>% 
-  sample_n(2000)
-
-rm(bio_act_session_intervals)
-
+bio_act_session_intervals_n <- aa_to_session_intervals_n(aabio)
 saveRDS(bio_act_session_intervals_n, 'bio_act_session_intervals_n.rds')
-
-bio_act_item_intervals <- aabio %>% 
-  filter(!is.na(cluster)) %>% 
-  select(cluster, person, timestamp, session, type) %>% 
-  group_by(cluster, person, session, type) %>% 
-  nest() %>% 
-  mutate(intervals = data %>% map(~timelist_to_difference(.$timestamp))) %>% 
-  select(cluster, person, session, intervals, type) %>% 
-  unnest() %>% 
-  filter(as.duration(intervals) < as.duration('1 day'))
-
-bio_act_item_intervals_n <- bio_act_item_intervals %>% 
-  group_by(cluster, type) %>% 
-  sample_n(200, replace = T)
-
-rm(bio_act_item_intervals)
-
-saveRDS(bio_act_item_intervals_n, 'bio_act_item_intervals_n.rds')
+#bio_act_item_intervals_n <- aa_to_item_intervals_n(aabio)
+#saveRDS(bio_act_item_intervals_n, 'bio_act_item_intervals_n.rds')
 ```
 
 ``` {r spectral_analysis_bio_read}
-bio_act_session_intervals_n <- readRDS('bio_act_session_intervals_n.rds')
+bio_act_session_intervals_n <- readRDS('bio_act_session_intervals_n.rds') 
 
 bio_cluster_comparison_session <- bio_act_session_intervals_n %>% 
   plot_timestamp_spectrum() +
   facet_grid(cluster ~ .)+
   ggtitle('Biopsychology Activity Spectrums', subtitle = 'Signals below 1 day only')
 
-bio_act_item_intervals_n <- readRDS('bio_act_item_intervals_n.rds')
+bio_cluster_comparison_session_grades <- bio_act_session_intervals_n %>% 
+  plot_timestamp_spectrum(color = cluster) +
+  facet_grid(grade_quartile ~ .)+
+  ggtitle('Biopsychology Activity Spectrums', subtitle = 'Signals below 1 day only')
 
-bio_act_item_plot <- bio_act_item_intervals %>% 
+# bio_act_item_intervals_n <- readRDS('bio_act_item_intervals_n.rds')
+# bio_act_item_plot <- bio_act_item_intervals %>% 
   #filter(type != "db_collection_entry") %>% 
-  plot_timestamp_spectrum() +
-  theme(strip.text.y = element_text(angle = 0))+
-  facet_grid(type ~ cluster) + 
-  ggtitle('Activity spectrums - Biopsychology', subtitle = 'Cluster v Item')
+  # plot_timestamp_spectrum() +
+  # theme(strip.text.y = element_text(angle = 0))+
+  # facet_grid(type ~ cluster) + 
+  # ggtitle('Activity spectrums - Biopsychology', subtitle = 'Cluster v Item')
 ```
 
 ``` {r spectral_analysis_soc_write, eval = FALSE}
-# soc_act_intervals_n <- aasoc %>% 
-#   filter(!is.na(cluster)) %>% 
-#   select(cluster, person, timestamp) %>% 
-#   group_by(cluster, person) %>% 
-#   nest() %>% 
-#   mutate(intervals = data %>% map(~timelist_to_difference(.$timestamp))) %>% 
-#   select(cluster, person, intervals) %>% 
-#   unnest() %>% 
-#   group_by(cluster) %>% 
-#   sample_n(2000)
-# 
-# soc_cluster_spectral_comparison <- soc_act_intervals_n %>% 
-#   plot_timestamp_spectrum() +
-#   facet_grid(cluster ~ .) +
-#   ggtitle('Social Psychology Activity Spectrums')
 
-soc_act_session_intervals <- aasoc %>% 
-  filter(!is.na(cluster)) %>% 
-  select(cluster, person, timestamp, session) %>% 
-  group_by(cluster, person, session) %>% 
-  nest() %>% 
-  mutate(intervals = data %>% map(~timelist_to_difference(.$timestamp))) %>% 
-  select(cluster, person, session, intervals) %>% 
-  unnest() %>% 
-  filter(as.duration(intervals) < as.duration('1 day')) 
-
-soc_act_session_intervals_n <- soc_act_session_intervals %>% 
-  group_by(cluster) %>% 
-  sample_n(2000)
-
-rm(soc_act_session_intervals)
-
+soc_act_session_intervals_n <- aa_to_session_intervals_n(aasoc)
 saveRDS(soc_act_session_intervals_n, 'soc_act_session_intervals_n.rds')
-
-soc_act_item_intervals <- aasoc %>% 
-  filter(!is.na(cluster)) %>% 
-  select(cluster, person, timestamp, session, type) %>% 
-  group_by(cluster, person, session, type) %>% 
-  nest() %>% 
-  mutate(intervals = data %>% map(~timelist_to_difference(.$timestamp))) %>% 
-  select(cluster, person, session, intervals, type) %>% 
-  unnest() %>% 
-  filter(as.duration(intervals) < as.duration('1 day'))
-
-soc_act_item_intervals_n <- soc_act_item_intervals %>% 
-  group_by(cluster, type) %>% 
-  sample_n(300, replace = T)
-
-rm(soc_act_item_intervals)
-
-saveRDS(soc_act_item_intervals_n, 'soc_act_item_intervals_n.rds')
 ```
 
 ``` {r spectral_analysis_soc_read}
@@ -436,17 +388,9 @@ soc_act_session_intervals_n <- readRDS('soc_act_session_intervals_n.rds')
 
 soc_cluster_comparison_session <- soc_act_session_intervals_n %>% 
   plot_timestamp_spectrum() +
-  facet_grid(cluster ~ .) +
-  ggtitle('Social Psychology Activity Spectrums', subtitle = 'Signals below 1 day removed')
+  facet_grid(grade_quartile ~ .) +
+  ggtitle('Social Psychology Activity Spectrums', subtitle = 'Signals above 1 day removed')
 
-soc_act_item_intervals_n <- readRDS('soc_act_item_intervals_n.rds')
-
-soc_act_item_plot <- soc_act_item_intervals_n %>% 
-  #filter(type != "db_collection_entry") %>% 
-  plot_timestamp_spectrum() +
-  theme(strip.text.y = element_text(angle = 0))+
-  facet_grid(type ~ cluster) + 
-  ggtitle('Activity spectrums - Social Psychology', subtitle = 'Cluster v Item')
 ```
 
 ``` {r draw_spetral_plots}
