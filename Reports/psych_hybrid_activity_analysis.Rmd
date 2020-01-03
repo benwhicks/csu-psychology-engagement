@@ -97,7 +97,7 @@ make_cc_graph <- function(cc){
   return(tbl_graph(nodes = nds, edges = eds))
 }
 
-make_aa_graph <- function(aa, compress = TRUE, date_floor = "months") {
+make_aa_graph <- function(aa, compress = TRUE, compress_by = c("weeks", "months")) {
   n <- length(unique(aa$person))
   df <- aa %>% 
     select(person, session, timestamp, content_pk1, cluster) %>% 
@@ -120,9 +120,22 @@ make_aa_graph <- function(aa, compress = TRUE, date_floor = "months") {
     select(-person_from, -session_from, -session_to) %>% 
     rename(person = person_to)
   if (compress) {
-    eds$timestamp <- lubridate::floor_date(eds$timestamp, date_floor)
-    eds <- eds %>% 
-      group_by(from, to, timestamp, cluster) %>% 
+    if (compress_by == "weeks") {
+      eds$week <- week(eds$timestamp) - week(SESSIONSTART) + 1
+      eds <- eds %>% 
+        group_by(from, to, week, cluster) %>% 
+        summarise(alpha = sum(alpha/n, na.rm = TRUE))
+    } else if (compress_by == "months") {
+      eds$month <- month(eds$timestamp) - month(SESSIONSTART)
+      eds <- eds %>% 
+        group_by(from, to, month, cluster) %>% 
+        summarise(alpha = sum(alpha/n, na.rm = TRUE))
+    } else {
+      break("Unrecognised compress_by variable, must be 'weeks' or 'months'")
+    }
+  } else {
+    eds <- eds %>%
+      group_by(from, to, timestamp, cluster) %>%
       summarise(alpha = sum(alpha/n, na.rm = TRUE))
   }
   return(tbl_graph(nodes = nds, edges = eds))
@@ -140,31 +153,37 @@ draw_cc <- function(graph, layout) {
 }
 
 draw_ag <- function(graph, layout) {
-  ggraph(graph, layout = "manual", 
+  ggraph(graph , layout = "manual", 
          x = layout$x, y = layout$y) +
-    geom_node_point(aes(color = handle), size = 0.5, alpha = 0.3) +
+  # ,layout = "nicely") +
+    geom_node_point(size = 0.5, alpha = 0.3) + # removed 'handle' as color aes
     geom_edge_link(aes(alpha = alpha)) +
     theme_graph() + 
     theme(legend.position = "none",
-          text = element_text(family = "TT Times New Roman"),
           strip.background = element_blank(),
-          strip.text.x = element_blank()) +
-    facet_grid(cluster ~ timestamp)
+          strip.text.x = element_blank()) 
 }
 
-draw_ag_timeColor <- function(graph, layout) {
+draw_ag_timeColor_week <- function(graph, layout) {
+  nodes <- graph %>% 
+    activate(nodes) %>% 
+    as_tibble() %>% 
+    inner_join(layout %>% select(id, x, y), by = "id")
+  graph <- graph %>% 
+    activate(nodes) %>% 
+    filter(id %in% nodes$id)
   ggraph(graph, layout = "manual", 
-         x = layout$x, y = layout$y) +
-    geom_node_point(aes(color = handle), size = 2, alpha = 0.8) +
-    geom_edge_link(aes(alpha = alpha*0.4, color = as.numeric(timestamp))) +
+         x = nodes$x, y = nodes$y) +
+    geom_edge_link(aes(alpha = alpha*0.4, color = week)) +
+    geom_node_point(size = 2, alpha = 0.8) +
     scale_edge_color_continuous(low = "blue", high = "dark red") +
     scale_color_brewer(palette = "Set2") +
     theme_graph() + 
     theme(legend.position = "none",
-          text = element_text(family = "TT Times New Roman"),
-          strip.background = element_blank()) +
-    facet_grid(. ~ cluster)
+          strip.background = element_blank()) 
 }
+
+draw_ag_timeColor(ag_m, lyt) + facet_grid(month ~ cluster)
 ```
 
 # Course Structure
@@ -174,11 +193,21 @@ The subject sites on Blackboard have a built in hierarchy; content on the site h
 ``` {r setting_up_graphs}
 set.seed(18)
 
+lyt <- create_layout(cg, layout = "nicely")
+draw_cc(cc, lyt)
+draw_ag(ag_m, lyt) + facet_grid(month ~ cluster)
+
 cg_bio <- make_cc_graph(ccbio)
 bio_layout <- create_layout(cg_bio, layout = "nicely")
-bio_clusters <- min(nodesBio$cluster, na.rm = T):max(nodesBio$cluster, na.rm = T)
-bio_act_by_cluster <- bio_clusters %>% 
-  map(function(n){aabio %>% filter(cluster == n) %>% make_aa_graph(date_floor = "weeks")})
+bio_clusters <- min(nodesBio$cluster_5, na.rm = T):max(nodesBio$cluster_5, na.rm = T)
+# bio_act_by_cluster <- bio_clusters %>% 
+#   map(function(n){aabio %>% 
+#       rename(cluster = cluster_2) %>% 
+#       make_aa_graph(compress_by = "weeks")})
+bio_act_by_cluster <- make_aa_graph(aabio %>% 
+                                      rename(cluster = cluster_5) %>% 
+                                      filter(cluster > 0), 
+                                    compress_by = "weeks")
 jg_clusters_bio <- cg_bio
 for (n in bio_clusters) {
   jg_clusters_bio <- jg_clusters_bio %>% graph_join(bio_act_by_cluster[[n]], by = "id")
@@ -187,9 +216,7 @@ for (n in bio_clusters) {
 
 bio_cc_plot <- draw_cc(cg_bio, bio_layout)
 
-bio_cluster_act_plot <- draw_ag(jg_clusters_bio %>% 
-                                  activate(edges) %>% 
-                                  filter(cluster > 0),
+bio_cluster_act_plot <- draw_ag_timeColor(bio_act_by_cluster,
                                 bio_layout)
 
 set.seed(5)  
@@ -219,27 +246,57 @@ soc_cc_plot <- draw_cc(cg_soc, soc_layout)
 #                             filter(id %in% soc_layout$id)
 #                           , soc_layout)
 
-soc_cluster_act_plot <- draw_ag(jg_clusters_soc %>% 
+ag_soc <- make_aa_graph(aasoc %>% rename(cluster = cluster_3), compress_by = "weeks")
+soc_cluster_act_plot <- draw_ag(ag_soc %>% 
+                                 activate(edges) %>% 
+                                 filter(cluster > 0) %>% 
+                                 activate(nodes),
+                                soc_layout)
+
+soc_cluster_act_plot_timeColor <- draw_ag_timeColor_week(ag_soc %>% 
                                  activate(edges) %>% 
                                  filter(cluster > 0) %>% 
                                  activate(nodes) %>% 
                                  filter(id %in% soc_layout$id),
-                                soc_layout)
-
-soc_cluster_act_plot_timeColor <- draw_ag_timeColor(jg_clusters_soc %>% 
-                                 activate(edges) %>% 
-                                 filter(cluster == 3) %>% 
-                                 activate(nodes) %>% 
-                                 filter(id %in% soc_layout$id),
                                 soc_layout) +
-  theme(strip.text = element_blank()) 
+  theme(strip.text = element_blank())
+
+sml_lyt <- soc_layout %>% 
+  filter(id %in% ag_soc())
+
+jg_soc <- make_cc_graph(ccsoc)
+lyt <- create_layout(jg_soc, layout = "nicely")
+jg_soc <- graph_join(jg_soc, make_aa_graph(aasoc %>% 
+                                             rename(cluster = cluster_3) %>% 
+                                             filter(content_pk1 %in% ccsoc$pk1), 
+                                           compress_by = "weeks"), 
+                     by = "id")
+
+soc_for_alasi <- jg_soc %>% 
+  ggraph(layout = "manual", x = lyt$x, y = lyt$y) +
+  geom_edge_link(aes(alpha = alpha*0.2, color = week))+
+    scale_edge_color_continuous(low = "blue", high = "dark red") +
+    theme_graph() + 
+    theme(legend.position = "none")
+
+soc_for_alasi <- ag_soc %>% 
+  activate(edges) %>% 
+  filter(cluster > 0) %>% 
+  activate(nodes) %>%
+  filter(id %in% soc_layout$id) %>%
+  ggraph(layout = "nicely", 
+         x = soc, y = soc_layout$y) +
+    geom_edge_link(aes(alpha = alpha*0.4, color = week)) +
+    scale_edge_color_continuous(low = "blue", high = "dark red") +
+    theme_graph() + 
+    theme(legend.position = "none")
 ```
 
 ``` {r draw_site_structure}
 soc_cc_plot + 
   ggtitle('Social Psychology Site Structure')
 bio_cc_plot +
-  ggtitle('Biopsychology Site Structure')
+  ggtitle('Subject A Site Structure')
 ```
 
 # Just add humans
